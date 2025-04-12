@@ -3,7 +3,7 @@ import pandas as pd
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set
 
 # Import project modules
 from src import config
@@ -19,34 +19,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 INCOMING_DIR = PROJECT_ROOT / "incoming"
 OUTPUT_DIR = PROJECT_ROOT / "splitadjusted"
-TICKER_FILE = PROJECT_ROOT / "data" / "metadata" / "russel.csv" # Updated path
+# TICKER_FILE = PROJECT_ROOT / "data" / "metadata" / "russel.csv" # No longer needed, loaded via config
 
 # --- Helper Functions ---
 
-def read_tickers(filepath: Path) -> List[str]:
-    """Reads symbols from a CSV file, expecting a 'Symbol' column."""
-    try:
-        df = pd.read_csv(filepath)
-        # Clean column names (remove leading/trailing spaces)
-        df.columns = df.columns.str.strip()
-        # Check for the 'Symbol' column
-        if 'Symbol' not in df.columns:
-            logging.error(f"'Symbol' column not found in {filepath}. Please ensure the column exists.")
-            return []
-        symbols = df['Symbol'].dropna().astype(str).unique().tolist()
-        symbols = [s.strip() for s in symbols if isinstance(s, str)] # Ensure all are strings and strip whitespace
-        symbols = list(set(symbols)) # Remove duplicates
-        symbols = [s for s in symbols if s] # Remove empty strings
-        symbols.sort() # Sort the symbols for consistency
-        # logging.info(f"Read {len(symbols)} unique symbols from {filepath} using 'Symbol' column") # Reduced verbosity
-        return symbols
-    except FileNotFoundError:
-        logging.error(f"Symbol file not found: {filepath}")
-        return []
-    except Exception as e:
-        logging.error(f"Error reading symbol file {filepath}: {e}")
-        return []
-
+# Removed read_tickers function, using centralized loader now.
 def find_ohlc_file(symbol: str, directory: Path) -> Optional[Path]:
     """Finds the OHLC CSV file for a given symbol in the specified directory."""
     # Sanitize symbol for filename matching (consistent with local_data.py)
@@ -222,7 +199,10 @@ def main():
         return
 
     # --- Data Loading ---
-    tickers = read_tickers(TICKER_FILE)
+    # Load tickers using the centralized function and configuration
+    logging.info("Loading tickers from sources specified in config.TICKER_SOURCES...")
+    tickers_set: Set[str] = local_data.load_tickers_from_sources(config.TICKER_SOURCES)
+    tickers: List[str] = sorted(list(tickers_set)) # Convert set to sorted list for processing
 
     if not tickers:
         logging.error("No tickers loaded. Exiting.")

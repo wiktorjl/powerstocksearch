@@ -5,7 +5,7 @@ from datetime import date, timedelta, datetime
 import logging
 import sys
 from typing import Set
-import pandas as pd
+# import pandas as pd # No longer needed directly here
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -42,28 +42,19 @@ def run_downloader():
     # 3. Ensure Data Directory Exists
     local_data.ensure_data_dir_exists()
 
-    # 4. Load Tickers from CSV
-    csv_path = 'data/metadata/russel.csv' # Updated path
-    symbol_column = 'Symbol ' # Note the space
-    logging.info(f"Loading tickers from {csv_path}, column '{symbol_column}'")
+    # 4. Load Tickers from Configured Sources
+    logging.info("Loading tickers from sources specified in config.TICKER_SOURCES...")
     try:
-        df = pd.read_csv(csv_path)
-        if symbol_column not in df.columns:
-            logging.error(f"Column '{symbol_column}' not found in {csv_path}. Available columns: {df.columns.tolist()}")
+        all_tickers: Set[str] = local_data.load_tickers_from_sources(config.TICKER_SOURCES)
+        if not all_tickers:
+            # The load_tickers_from_sources function logs details, just add a summary here
+            logging.error("No tickers were loaded from any configured source. Exiting.")
             sys.exit(1)
-        # Convert to set, strip whitespace, and remove any empty strings
-        all_tickers: Set[str] = set(df[symbol_column].astype(str).str.strip())
-        all_tickers.discard('') # Remove empty strings if any
-        logging.info(f"Loaded {len(all_tickers)} unique tickers from {csv_path}")
-    except FileNotFoundError:
-        logging.error(f"Ticker file not found: {csv_path}. Exiting.")
-        sys.exit(1)
+        # Logging of total count is now handled within load_tickers_from_sources
+        # logging.info(f"Successfully loaded {len(all_tickers)} unique tickers.") # Optional: Keep if you want summary here too
     except Exception as e:
-        logging.error(f"Error reading ticker file {csv_path}: {e}")
-        sys.exit(1)
-
-    if not all_tickers:
-        logging.error(f"No tickers loaded from {csv_path}. Exiting.")
+        # Catch potential unexpected errors during the loading process itself
+        logging.error(f"An unexpected error occurred during ticker loading: {e}")
         sys.exit(1)
 
     # Keep the logging info about total tickers

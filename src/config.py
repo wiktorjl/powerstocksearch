@@ -1,6 +1,8 @@
 import os
 from dotenv import load_dotenv
+from typing import Optional, List, Dict
 from typing import Optional
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -27,6 +29,27 @@ if not EODHD_API_KEY:
     # Consider raising an exception or exiting depending on desired behavior
     # raise ValueError("EODHD_API_KEY not found in .env file.")
     # exit(1)
+
+
+
+# --- Ticker Loading Configuration ---
+# List of dictionaries, each specifying a CSV/TSV file and the column containing tickers.
+# You can add more sources here or potentially load this from an environment variable.
+TICKER_SOURCES: List[Dict[str, str]] = [
+    {"path": "data/metadata/russel.csv", "symbol_column": "Symbol"}, # Default
+    # Example for another file (e.g., TSV):
+    {"path": "data/metadata/sp500.csv", "symbol_column": "Symbol"}
+]
+
+# You could potentially override TICKER_SOURCES via an environment variable
+# e.g., TICKER_SOURCES_JSON = os.getenv("TICKER_SOURCES_JSON")
+# if TICKER_SOURCES_JSON:
+#     import json
+#     try:
+#         TICKER_SOURCES = json.loads(TICKER_SOURCES_JSON)
+#         print(f"Loaded ticker sources from environment variable.")
+#     except json.JSONDecodeError:
+#         print("Warning: Invalid JSON in TICKER_SOURCES_JSON environment variable. Using default.")
 
 
 # Parameters for Support/Resistance Algorithm

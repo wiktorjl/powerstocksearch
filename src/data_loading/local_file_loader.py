@@ -3,6 +3,7 @@ import re
 import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta, date
+from typing import Optional, Union, List, Dict, Set
 from typing import Optional, Union
 import logging
 
@@ -121,6 +122,72 @@ def save_data_to_csv(dataframe: pd.DataFrame, filename: Path):
     except Exception as e:
         logging.error(f"Failed to save DataFrame to {filename}: {e}")
         # Consider re-raising or handling more specifically
+
+
+def load_tickers_from_sources(sources: List[Dict[str, str]]) -> Set[str]:
+    """
+    Loads ticker symbols from a list of specified source files (CSV/TSV).
+
+    Args:
+        sources: A list of dictionaries. Each dictionary must contain:
+                 'path': The relative path to the CSV/TSV file from the project root.
+                 'symbol_column': The name of the column containing the ticker symbols.
+                 Optionally, 'separator': The delimiter used in the file (defaults to ',').
+
+    Returns:
+        A set of unique ticker symbols loaded from all specified files.
+        Returns an empty set if no files are processed or errors occur.
+    """
+    all_tickers: Set[str] = set()
+    project_root = Path(__file__).resolve().parent.parent.parent
+
+    if not sources:
+        logging.warning("No ticker sources provided in the configuration.")
+        return all_tickers
+
+    for source_info in sources:
+        file_path_str = source_info.get('path')
+        symbol_column = source_info.get('symbol_column')
+        separator = source_info.get('separator', ',') # Default to comma
+
+        if not file_path_str or not symbol_column:
+            logging.warning(f"Skipping invalid source entry in configuration: {source_info}. Missing 'path' or 'symbol_column'.")
+            continue
+
+        file_path = project_root / file_path_str
+        logging.info(f"Loading tickers from {file_path} (Column: '{symbol_column}', Separator: '{separator}')")
+
+        try:
+            # Check if file exists before attempting to read
+            if not file_path.is_file():
+                logging.error(f"Ticker source file not found: {file_path}")
+                continue # Skip this file and try the next one
+
+            df = pd.read_csv(file_path, sep=separator)
+
+            if symbol_column not in df.columns:
+                logging.error(f"Column '{symbol_column}' not found in {file_path}. Available columns: {df.columns.tolist()}")
+                continue # Skip this file
+
+            # Extract tickers, convert to string, strip whitespace, and filter out empty strings
+            tickers_in_file = set(df[symbol_column].astype(str).str.strip())
+            tickers_in_file.discard('') # Remove potential empty strings
+
+            logging.info(f"Loaded {len(tickers_in_file)} unique tickers from {file_path}")
+            all_tickers.update(tickers_in_file)
+
+        except pd.errors.EmptyDataError:
+            logging.warning(f"Ticker source file is empty: {file_path}")
+        except FileNotFoundError: # Should be caught by is_file() check, but good practice
+             logging.error(f"Ticker source file not found (double check): {file_path}")
+        except Exception as e:
+            logging.error(f"Error reading ticker file {file_path}: {e}")
+            # Decide if you want to stop processing other files on error
+            # For robustness, we continue to the next file by default
+
+    logging.info(f"Total unique tickers loaded from all sources: {len(all_tickers)}")
+    return all_tickers
+
 
 # Example Usage (Optional - for testing)
 if __name__ == '__main__':
