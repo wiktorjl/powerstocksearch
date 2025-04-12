@@ -12,13 +12,14 @@ import sys
 import argparse
 import logging
 from datetime import datetime, timedelta
-import psycopg2
 import pandas as pd
 import matplotlib.pyplot as plt
 import mplfinance as mpf
-from config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, AlgorithmConfig
+from src.config import AlgorithmConfig # Updated import path
 # Import the support/resistance calculation function
-from support_resistance import identify_support_resistance
+from src.feature_engineering.support_resistance import identify_support_resistance # Updated import path
+# Import the data fetching function
+from src.database.data_provider import fetch_ohlc_data_db # Updated import path
 
 # Configure logging
 logging.basicConfig(
@@ -27,90 +28,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def get_db_connection():
-    """
-    Establish a connection to the PostgreSQL database.
-
-    Returns:
-        psycopg2.connection: Database connection object or None if connection fails
-    """
-    try:
-        connection = psycopg2.connect(
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            host=DB_HOST,
-            port=DB_PORT
-        )
-        logger.info("Successfully connected to the database")
-        return connection
-    except Exception as e:
-        logger.error(f"Error connecting to the database: {e}")
-        return None
-
-def fetch_ohlc_data(symbol, start_date=None, end_date=None):
-    """
-    Fetch OHLC data for a given symbol from the database with optional date range.
-
-    Args:
-        symbol (str): The stock ticker symbol
-        start_date (str, optional): Start date in 'YYYY-MM-DD' format
-        end_date (str, optional): End date in 'YYYY-MM-DD' format
-
-    Returns:
-        pandas.DataFrame: DataFrame containing OHLC data or None if fetch fails
-    """
-    connection = get_db_connection()
-    if not connection:
-        return None
-
-    # Base query
-    query = """
-    SELECT ohlc_data.timestamp,
-           ohlc_data.open,
-           ohlc_data.high,
-           ohlc_data.low,
-           ohlc_data.close,
-           ohlc_data.volume
-    FROM ohlc_data
-    JOIN symbols ON ohlc_data.symbol_id = symbols.symbol_id
-    WHERE symbols.symbol = %s
-    """
-
-    params = [symbol]
-
-    # Add date filters if provided
-    if start_date:
-        query += " AND ohlc_data.timestamp >= %s"
-        params.append(start_date)
-
-    if end_date:
-        query += " AND ohlc_data.timestamp <= %s"
-        params.append(end_date)
-
-    query += " ORDER BY ohlc_data.timestamp;"
-
-    try:
-        logger.info(f"Fetching data for {symbol}" +
-                   (f" from {start_date}" if start_date else "") +
-                   (f" to {end_date}" if end_date else ""))
-
-        df = pd.read_sql_query(query, connection, params=params)
-        connection.close()
-
-        if df.empty:
-            logger.warning(f"No data found for symbol {symbol}")
-            return None
-
-        logger.info(f"Retrieved {len(df)} data points")
-        return df
-
-    except Exception as e:
-        logger.error(f"Error fetching data: {e}")
-        if connection:
-            connection.close()
-        return None
-
+# Database connection and data fetching moved to data_provider.py
 def resample_dataframe(df, timeframe='daily'):
     """
     Resample the dataframe to the specified timeframe.
@@ -193,18 +111,19 @@ def process_dataframe(df, timeframe='daily'):
 
     return df_plot
 
-# Function signature updated to accept combined sr_levels
-def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title=None, sr_levels=None):
+def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title=None, support_levels=None, resistance_levels=None):
     """
-    Plot a professional candlestick chart using mplfinance, manually drawing S/R lines.
+    Plot a professional candlestick chart using mplfinance, manually drawing pre-calculated S/R lines.
 
     Args:
         df_plot (pandas.DataFrame): DataFrame containing OHLC data for the desired plot period (processed and filtered).
+                                    Must have a DatetimeIndex.
         symbol (str): Stock ticker symbol
         output_file (str, optional): Path to save the plot image
         timeframe (str): Timeframe for the chart ('daily', 'weekly', or 'monthly')
         title (str, optional): Custom title for the plot
-        sr_levels (list, optional): List of combined top S/R levels to potentially plot.
+        support_levels (list, optional): List of pre-calculated support levels to plot.
+        resistance_levels (list, optional): List of pre-calculated resistance levels to plot.
 
     Returns:
         bool: True if plot was successfully created, False otherwise
@@ -253,40 +172,38 @@ def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title
         )
 
         # --- Manually draw S/R lines ---
-        if sr_levels and axes and hasattr(axes[0], 'axhline'): # Check if axes exist and have axhline method
+        if (support_levels or resistance_levels) and axes and hasattr(axes[0], 'axhline'): # Check if axes exist and have axhline method
             try:
-                # Get current price from the last data point being plotted
-                current_price = df_plot['close'].iloc[-1]
-                max_lines_per_type = AlgorithmConfig.MAX_SR_LINES
-
-                # Separate, sort, and limit
-                support = sorted([lvl for lvl in sr_levels if isinstance(lvl, (int, float)) and lvl <= current_price], reverse=True) # Highest support first
-                resistance = sorted([lvl for lvl in sr_levels if isinstance(lvl, (int, float)) and lvl > current_price]) # Lowest resistance first
-
-                final_support = support[:max_lines_per_type]
-                final_resistance = resistance[:max_lines_per_type]
-
-                # Draw support lines (green) using the first axes panel (price panel)
                 price_ax = axes[0] # Typically the main price panel
-                for level in final_support:
-                    price_ax.axhline(y=level, color='green', linestyle='--', linewidth=0.8, alpha=0.7)
-                    logger.debug(f"Drawing support line at {level:.2f}")
+                drawn_support = 0
+                drawn_resistance = 0
+
+                # Draw support lines (green)
+                if support_levels:
+                    for level in support_levels:
+                        if isinstance(level, (int, float)):
+                            price_ax.axhline(y=level, color='green', linestyle='--', linewidth=0.8, alpha=0.7)
+                            logger.debug(f"Drawing support line at {level:.2f}")
+                            drawn_support += 1
 
                 # Draw resistance lines (red)
-                for level in final_resistance:
-                    price_ax.axhline(y=level, color='red', linestyle=':', linewidth=0.8, alpha=0.7)
-                    logger.debug(f"Drawing resistance line at {level:.2f}")
+                if resistance_levels:
+                    for level in resistance_levels:
+                         if isinstance(level, (int, float)):
+                            price_ax.axhline(y=level, color='red', linestyle=':', linewidth=0.8, alpha=0.7)
+                            logger.debug(f"Drawing resistance line at {level:.2f}")
+                            drawn_resistance += 1
 
-                if final_support or final_resistance:
-                    logger.info(f"Manually drew {len(final_support)} support and {len(final_resistance)} resistance lines.")
+                if drawn_support > 0 or drawn_resistance > 0:
+                    logger.info(f"Manually drew {drawn_support} support and {drawn_resistance} resistance lines.")
                 else:
-                    logger.info("No S/R lines within the top threshold to draw for the plotted period.")
+                    logger.info("No valid S/R levels provided or drawable.")
 
             except IndexError:
                  logger.error("Could not access axes[0] to draw S/R lines. Plot might be empty or structure unexpected.")
             except Exception as draw_err:
                  logger.error(f"Error manually drawing S/R lines: {draw_err}")
-        elif sr_levels:
+        elif support_levels or resistance_levels:
              logger.warning("S/R levels provided, but could not get valid axes object to draw on.")
         # --- End manual drawing ---
 
@@ -377,8 +294,8 @@ def main():
     title = args.title
     plot_sr = args.sr # Get the boolean flag for S/R
 
-    # Fetch data
-    raw_df = fetch_ohlc_data(symbol, start_date, end_date)
+    # Fetch data using the imported function
+    raw_df = fetch_ohlc_data_db(symbol, start_date, end_date)
 
     if raw_df is None or raw_df.empty:
         logger.error(f"No data available for {symbol}")
@@ -404,26 +321,45 @@ def main():
 
 
     # Calculate S/R levels if requested, using ONLY the data being plotted
-    # identify_support_resistance returns a single list of combined top levels
-    sr_levels = None
+    support_levels_to_plot = None
+    resistance_levels_to_plot = None
     if plot_sr:
         if not df_plot_final.empty:
             logger.info("Calculating top Support/Resistance levels on plotted data...")
-            # Pass df with DatetimeIndex for potential future use in identify_support_resistance
-            # but reset_index().copy() is needed if identify_support_resistance expects 'timestamp' column
-            sr_levels = identify_support_resistance(df_plot_final.reset_index().copy())
-            # Logging is now done inside identify_support_resistance
-            if not sr_levels:
+            # Instantiate the config for S/R calculation
+            sr_config = AlgorithmConfig()
+            # Pass the DataFrame and the config object to identify_support_resistance
+            all_sr_levels = identify_support_resistance(df_plot_final.reset_index().copy(), sr_config)
+
+            if all_sr_levels:
+                # Filter and limit the S/R levels here before passing to plot function
+                try:
+                    current_price = df_plot_final['close'].iloc[-1]
+                    max_lines_per_type = AlgorithmConfig.MAX_SR_LINES
+
+                    # Separate, sort, and limit
+                    support = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl <= current_price], reverse=True) # Highest support first
+                    resistance = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl > current_price]) # Lowest resistance first
+
+                    support_levels_to_plot = support[:max_lines_per_type]
+                    resistance_levels_to_plot = resistance[:max_lines_per_type]
+
+                    logger.info(f"Identified {len(support_levels_to_plot)} support and {len(resistance_levels_to_plot)} resistance levels to plot.")
+
+                except IndexError:
+                    logger.error("Could not get current price to filter S/R levels.")
+                except Exception as filter_err:
+                    logger.error(f"Error filtering S/R levels: {filter_err}")
+            else:
                  logger.warning("Could not identify any S/R levels for the plotted period.")
         else:
             logger.warning("Cannot calculate S/R levels, no data to plot.")
-
-
     # Create the plot using the final filtered data and relevant S/R levels
     if not df_plot_final.empty:
-        # Pass the combined list of levels to the plot function for manual drawing
+        # Pass the pre-filtered lists of support and resistance levels
         plot_candlestick(df_plot_final, symbol, output_file, timeframe, title,
-                         sr_levels=sr_levels)
+                         support_levels=support_levels_to_plot,
+                         resistance_levels=resistance_levels_to_plot)
     else:
         # This case should ideally be caught earlier, but double-check
         logger.error(f"Data processing failed for {symbol}")

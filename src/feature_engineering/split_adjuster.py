@@ -6,19 +6,20 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
 # Import project modules
-import config
-from eod_api import EodApiClient
-import local_data # Assuming local_data.py has helpers for file paths
+from src import config
+from src.data_acquisition.eod_downloader import EodApiClient # Updated import path
+from src.data_loading import local_file_loader as local_data # Updated import path and alias
 
 # --- Configuration ---
 # Keep INFO level for required messages, warnings, and errors
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define directories using pathlib for better path handling
-BASE_DIR = Path(__file__).resolve().parent # Get the directory where this script resides
-INCOMING_DIR = BASE_DIR / "incoming"
-OUTPUT_DIR = BASE_DIR / "splitadjusted"
-TICKER_FILE = BASE_DIR / "russel.csv" # Assuming russel.csv is in the base directory
+# Define paths relative to the project root (assuming this script is in src/feature_engineering/)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+INCOMING_DIR = PROJECT_ROOT / "incoming"
+OUTPUT_DIR = PROJECT_ROOT / "splitadjusted"
+TICKER_FILE = PROJECT_ROOT / "data" / "metadata" / "russel.csv" # Updated path
 
 # --- Helper Functions ---
 

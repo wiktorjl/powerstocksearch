@@ -3,12 +3,12 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-# Import configuration and helper modules
-from config import AlgorithmConfig
-from indicators import find_swing_highs_lows, apply_zigzag_indicator
-from smoothing import smooth_prices, calculate_derivative, find_sign_changes
-from clustering import cluster_points, calculate_cluster_centroids
-from weighting import adjust_levels_with_weights
+# Import helper modules (config import removed from top level)
+# from config import AlgorithmConfig # Removed - will be passed as argument
+from .technical_indicators import find_swing_highs_lows, apply_zigzag_indicator # Renamed and relative import
+from .smoothing import smooth_prices, calculate_derivative, find_sign_changes # Relative import
+from .clustering_analysis import cluster_points, calculate_cluster_centroids # Renamed and relative import
+from .weighting_schemes import adjust_levels_with_weights # Renamed and relative import
 import logging # Import logging
 
 logger = logging.getLogger(__name__) # Setup logger for this module
@@ -97,17 +97,20 @@ def clean_and_prepare_sr_data(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"Data cleaning complete. Resulting shape: {df_clean.shape}")
     return df_clean
 
-def identify_support_resistance(df: pd.DataFrame):
+def identify_support_resistance(df: pd.DataFrame, config):
     """
     Main function to identify support and resistance levels from OHLC data.
 
     Args:
         df (pd.DataFrame): DataFrame containing OHLC data with a 'timestamp' column.
                            Expected columns: 'timestamp', 'open', 'high', 'low', 'close'.
+        config: An object or dictionary containing algorithm parameters like
+                SWING_WINDOW, ZIGZAG_THRESHOLD, SMOOTHING_WINDOW, SMOOTHING_POLYORDER,
+                CLUSTER_DISTANCE_THRESHOLD_PERCENT, DECAY_FACTOR, MAX_SR_LINES.
 
     Returns:
         list: A list of the top N strongest support/resistance levels (prices),
-              where N is defined by AlgorithmConfig.MAX_SR_LINES * 2.
+              where N is defined by config.MAX_SR_LINES * 2 (potentially).
               Returns an empty list if data is insufficient or an error occurs.
     """
     required_cols = ['timestamp', 'open', 'high', 'low', 'close']
@@ -115,9 +118,10 @@ def identify_support_resistance(df: pd.DataFrame):
          logger.error(f"Input DataFrame is missing required columns ({required_cols}).")
          return []
 
-    min_required_len = max(AlgorithmConfig.SWING_WINDOW, AlgorithmConfig.SMOOTHING_WINDOW, 2) # Need at least 2 for some calcs
+    # Use passed config object
+    min_required_len = max(config.SWING_WINDOW, config.SMOOTHING_WINDOW, 2) # Need at least 2 for some calcs
     if len(df) < min_required_len:
-        logger.warning(f"Insufficient data ({len(df)} rows) for support/resistance calculation (min required: {min_required_len}).")
+        logger.warning(f"Insufficient data ({len(df)} rows) for support/resistance calculation (min required: {min_required_len} based on config).")
         return []
 
     # Step 1: Data Preparation specific for SR
@@ -128,24 +132,25 @@ def identify_support_resistance(df: pd.DataFrame):
 
     # Ensure we have enough data after cleaning
     if len(clean_data) < min_required_len:
-        logger.warning(f"Insufficient data ({len(clean_data)} rows) after cleaning for S/R calculation (min required: {min_required_len}).")
+        logger.warning(f"Insufficient data ({len(clean_data)} rows) after cleaning for S/R calculation (min required: {min_required_len} based on config).")
         return []
 
-    # Step 2: Identify Key Price Points
-    swing_points = find_swing_highs_lows(clean_data, AlgorithmConfig.SWING_WINDOW)
-    zigzag_points = apply_zigzag_indicator(clean_data, AlgorithmConfig.ZIGZAG_THRESHOLD)
+    # Step 2: Identify Key Price Points using passed config
+    swing_points = find_swing_highs_lows(clean_data, config.SWING_WINDOW)
+    zigzag_points = apply_zigzag_indicator(clean_data, config.ZIGZAG_THRESHOLD)
 
     # Step 3: Smoothing and Derivative Detection
     derivative_points = []
-    if len(clean_data['price']) >= AlgorithmConfig.SMOOTHING_WINDOW and AlgorithmConfig.SMOOTHING_WINDOW > AlgorithmConfig.SMOOTHING_POLYORDER:
+    # Use passed config for smoothing parameters
+    if len(clean_data['price']) >= config.SMOOTHING_WINDOW and config.SMOOTHING_WINDOW > config.SMOOTHING_POLYORDER:
         # Ensure smoothing window is not larger than data length and is odd
-        smoothing_window = min(AlgorithmConfig.SMOOTHING_WINDOW, len(clean_data['price']))
+        smoothing_window = min(config.SMOOTHING_WINDOW, len(clean_data['price']))
         if smoothing_window % 2 == 0: smoothing_window -= 1
 
-        if smoothing_window > AlgorithmConfig.SMOOTHING_POLYORDER:
+        if smoothing_window > config.SMOOTHING_POLYORDER:
             smoothed_prices = smooth_prices(clean_data['price'].values,
                                             smoothing_window,
-                                            AlgorithmConfig.SMOOTHING_POLYORDER)
+                                            config.SMOOTHING_POLYORDER)
             if smoothed_prices is not None and len(smoothed_prices) > 1:
                 derivatives = calculate_derivative(smoothed_prices)
                 if derivatives is not None and len(derivatives) > 1:
@@ -154,8 +159,8 @@ def identify_support_resistance(df: pd.DataFrame):
                                          for i in sign_change_indices if i < len(clean_data)]
                 else: logger.warning("Derivative calculation failed or resulted in insufficient data.")
             else: logger.warning("Smoothing failed or resulted in insufficient data.")
-        else: logger.warning(f"Adjusted smoothing window ({smoothing_window}) not > polyorder ({AlgorithmConfig.SMOOTHING_POLYORDER}). Skipping derivative points.")
-    else: logger.warning("Insufficient data or invalid parameters for smoothing. Skipping derivative points.")
+        else: logger.warning(f"Adjusted smoothing window ({smoothing_window}) not > polyorder ({config.SMOOTHING_POLYORDER}). Skipping derivative points.")
+    else: logger.warning("Insufficient data or invalid parameters (from config) for smoothing. Skipping derivative points.")
 
 
     # Combine all points from different methods
@@ -167,8 +172,9 @@ def identify_support_resistance(df: pd.DataFrame):
 
     # Step 4: Clustering for level identification
     avg_price = clean_data['price'].mean()
+    # Use passed config for clustering
     clusters = cluster_points(all_points,
-                              AlgorithmConfig.CLUSTER_DISTANCE_THRESHOLD_PERCENT,
+                              config.CLUSTER_DISTANCE_THRESHOLD_PERCENT,
                               avg_price)
     if not clusters:
         logger.warning("Clustering did not produce any levels.")
@@ -184,7 +190,8 @@ def identify_support_resistance(df: pd.DataFrame):
     # Use the last date from the cleaned (naive) dataframe
     current_date = clean_data['timestamp'].iloc[-1]
 
-    weighted_levels = adjust_levels_with_weights(levels, all_points, AlgorithmConfig.DECAY_FACTOR, current_date)
+    # Use passed config for weighting
+    weighted_levels = adjust_levels_with_weights(levels, all_points, config.DECAY_FACTOR, current_date)
     if not weighted_levels:
          logger.warning("Time weighting did not produce any levels. Returning unweighted levels.")
          weighted_levels = levels # Fallback to unweighted
@@ -216,7 +223,8 @@ def identify_support_resistance(df: pd.DataFrame):
     # Define proximity threshold for counting confirmations
     # Ensure avg_price is available here. It was calculated around line 169.
     # If avg_price calculation was moved or removed, recalculate: avg_price = clean_data['price'].mean()
-    proximity_threshold = (AlgorithmConfig.CLUSTER_DISTANCE_THRESHOLD_PERCENT * avg_price) / 2.0
+    # Use passed config for proximity threshold calculation
+    proximity_threshold = (config.CLUSTER_DISTANCE_THRESHOLD_PERCENT * avg_price) / 2.0
     all_point_prices = [p[1] for p in all_points if isinstance(p[1], (int, float))]
 
     def calculate_strengths(levels_to_check):
@@ -235,8 +243,8 @@ def identify_support_resistance(df: pd.DataFrame):
     support_strengths = calculate_strengths(potential_support)
     resistance_strengths = calculate_strengths(potential_resistance)
 
-    # Select the top N for each category
-    top_n = AlgorithmConfig.MAX_SR_LINES
+    # Select the top N for each category using passed config
+    top_n = config.MAX_SR_LINES
     top_support = [item['level'] for item in support_strengths[:top_n]]
     top_resistance = [item['level'] for item in resistance_strengths[:top_n]]
 

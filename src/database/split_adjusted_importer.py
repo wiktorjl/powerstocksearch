@@ -4,27 +4,13 @@ import psycopg2
 import psycopg2.extras
 import logging
 from datetime import datetime, timezone
-from config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+from src.config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT # Adjusted import
+from src.database.connection import get_db_connection # Import shared connection function
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- Database Connection ---
-def get_db_connection():
-    """Establishes a connection to the PostgreSQL database."""
-    try:
-        conn = psycopg2.connect(
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            host=DB_HOST,
-            port=DB_PORT
-        )
-        logging.info("Database connection established successfully.")
-        return conn
-    except psycopg2.OperationalError as e:
-        logging.error(f"Database connection failed: {e}")
-        raise
+# Removed local get_db_connection - using shared one from src.database.connection
 
 # --- Symbol Management ---
 def get_or_create_symbol_id(cursor, symbol):

@@ -11,7 +11,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Define the directory for storing incoming data relative to this script's location
 # Using Path for better cross-platform compatibility
-DATA_DIR = Path("incoming")
+# Point to the 'incoming' directory at the project root, relative to this file's location
+DATA_DIR = Path(__file__).resolve().parent.parent.parent / "incoming"
 
 # Regex to parse filenames like TICKER_YYYYMMDD_YYYYMMDD.csv
 # It captures the ticker, start date, and end date.

@@ -201,7 +201,7 @@ class EodApiClient:
                 return None
 # Example Usage (Optional - for testing)
 if __name__ == '__main__':
-    import config # Assuming config.py is in the same directory and .env is set up
+    from src import config # Adjusted import for direct execution context
 
     if config.EODHD_API_KEY:
         client = EodApiClient(config.EODHD_API_KEY)

@@ -1,6 +1,6 @@
-import config
-import eod_api
-import local_data
+from src import config
+from src.data_acquisition import eod_downloader as eod_api # Renamed and moved
+from src.data_loading import local_file_loader as local_data # Renamed and moved
 from datetime import date, timedelta, datetime
 import logging
 import sys
@@ -43,7 +43,7 @@ def run_downloader():
     local_data.ensure_data_dir_exists()
 
     # 4. Load Tickers from CSV
-    csv_path = 'russel.csv'
+    csv_path = 'data/metadata/russel.csv' # Updated path
     symbol_column = 'Symbol ' # Note the space
     logging.info(f"Loading tickers from {csv_path}, column '{symbol_column}'")
     try:
