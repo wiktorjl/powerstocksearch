@@ -121,7 +121,7 @@ def insert_symbol_details(cursor, symbol_id, details):
 # --- Main Execution ---
 def main():
     """Main function to orchestrate the data loading process."""
-    data_dir = "splitadjusted"
+    data_dir = config.SPLIT_ADJUSTED_DIR
     conn = None # Initialize conn to None
 
     if not os.path.isdir(data_dir):
@@ -140,7 +140,6 @@ def main():
             # Load all symbols from sp500 and russel files and create a mapping of symbol to name
             local_data.ensure_data_dir_exists()
             all_tickers: Dict[str, Dict[str, Optional[str]]] = local_data.load_tickers_and_data_from_sources(config.TICKER_SOURCES)
-            # all_tickers: Set[str] = local_data.load_tickers_from_sources(config.TICKER_SOURCES)
 
 
             for filename in json_files:

@@ -10,6 +10,7 @@ load_dotenv()
 # Retrieve the API key
 EODHD_API_KEY: Optional[str] = os.getenv("EODHD_API_KEY")
 
+FINNHUB_API_KEY: Optional[str] = os.getenv("FINNHUB_API_KEY")
 
 # Retrieve Database connection details
 DB_NAME: Optional[str] = os.getenv("DB_NAME")
@@ -31,6 +32,22 @@ if not EODHD_API_KEY:
     # exit(1)
 
 
+if not FINNHUB_API_KEY:
+    print("Warning: FINNHUB_API_KEY not found in .env file. Finnhub features will be unavailable.")
+    # Depending on requirements, you might want to raise an error or exit
+    # raise ValueError("FINNHUB_API_KEY not found in .env file.")
+
+
+
+
+# --- Data Directory Configuration ---
+# Base directory for external stock data (can be overridden by env var)
+STOCK_DATA_BASE_DIR = os.getenv("STOCK_DATA_BASE_DIR", "/home/user/stockdata")
+
+# Specific data directories
+COMPANY_INFO_DIR = os.path.join(STOCK_DATA_BASE_DIR, "company_info")
+SPLIT_ADJUSTED_DIR = os.path.join(STOCK_DATA_BASE_DIR, "splitadjusted")
+INCOMING_DATA_DIR = os.path.join(STOCK_DATA_BASE_DIR, "incoming")
 
 # --- Ticker Loading Configuration ---
 # List of dictionaries, each specifying a CSV/TSV file and the column containing tickers.

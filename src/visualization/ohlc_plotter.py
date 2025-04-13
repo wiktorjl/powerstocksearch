@@ -275,94 +275,199 @@ def parse_arguments():
 
     return parser.parse_args()
 
-def main():
-    """Main function to orchestrate the script execution."""
-    # Parse command line arguments
+def generate_and_save_chart(symbol, days=90, timeframe='daily', plot_sr=False):
+    """
+    Fetches data, generates a candlestick chart, saves it to a static location,
+    and returns the relative URL path.
+
+    Args:
+        symbol (str): Stock ticker symbol (uppercase).
+        days (int): Number of most recent days/periods to plot.
+        timeframe (str): Timeframe for the chart ('daily', 'weekly', 'monthly').
+        plot_sr (bool): Whether to calculate and plot support/resistance levels.
+
+    Returns:
+        str or None: Relative URL path to the saved chart (e.g., '/static/plots/AAPL.png')
+                     or None if chart generation failed.
+    """
+    logger.info(f"Generating chart for {symbol} ({timeframe}, last {days} periods, S/R: {plot_sr})")
+
+    # Define output path relative to the project root
+    # Assumes Flask static folder is mapped correctly
+    output_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'static', 'plots')
+    # Ensure the directory exists
     try:
-        args = parse_arguments()
-    except SystemExit:
-        # This happens when --help is called or there's an error in arguments
-        return
+        os.makedirs(output_dir, exist_ok=True)
+    except OSError as e:
+        logger.error(f"Could not create output directory '{output_dir}': {e}")
+        return None
 
-    # Assign args to variables
-    symbol = args.symbol.strip().upper()
-    start_date = args.start
-    end_date = args.end
-    days = args.days
-    timeframe = args.timeframe
-    output_file = args.output
-    title = args.title
-    plot_sr = args.sr # Get the boolean flag for S/R
+    # Use a consistent filename based on the symbol
+    filename = f"{symbol}.png"
+    output_file = os.path.join(output_dir, filename)
+    relative_url = f"/static/plots/{filename}" # URL path for Flask
 
-    # Fetch data using the imported function
-    raw_df = fetch_ohlc_data_db(symbol, start_date, end_date)
+    # Fetch data using the imported function (fetch last 'days' worth + buffer for S/R calc if needed)
+    # Fetch a bit more data initially if S/R is needed, as resampling might reduce points
+    fetch_days = days + 60 if plot_sr and timeframe != 'daily' else days + 10 # Add buffer
+    end_date_dt = datetime.now()
+    start_date_dt = end_date_dt - timedelta(days=fetch_days * (7 if timeframe == 'weekly' else 31 if timeframe == 'monthly' else 1.5)) # Estimate start date
+    start_date_str = start_date_dt.strftime('%Y-%m-%d')
+    end_date_str = end_date_dt.strftime('%Y-%m-%d')
+
+    raw_df = fetch_ohlc_data_db(symbol, start_date=start_date_str, end_date=end_date_str)
 
     if raw_df is None or raw_df.empty:
-        logger.error(f"No data available for {symbol}")
-        return # Exit if no data
+        logger.error(f"No data available for {symbol} between {start_date_str} and {end_date_str}")
+        return None
 
     # Process dataframe for plotting (sets index, resamples if needed)
     df_processed = process_dataframe(raw_df, timeframe)
 
     if df_processed is None or df_processed.empty:
-        logger.error(f"Data processing failed for {symbol}")
-        return
+        logger.error(f"Data processing failed for {symbol} after fetching.")
+        return None
 
     # Filter for the requested number of days/periods *before* S/R calculation
     df_plot_final = df_processed.copy()
     if days and days > 0:
         if len(df_plot_final) > days:
             df_plot_final = df_plot_final.iloc[-days:]
-            logger.info(f"Using most recent {days} periods for plot and S/R calculation")
+            logger.info(f"Using most recent {len(df_plot_final)} periods for plot (requested {days})")
         else:
-             logger.info(f"Using all available {len(df_plot_final)} periods (less than requested {days}) for plot and S/R calculation")
+             logger.info(f"Using all available {len(df_plot_final)} periods (less than requested {days})")
     else:
-        logger.info(f"Using all available {len(df_plot_final)} periods for plot and S/R calculation")
+        logger.info(f"Using all available {len(df_plot_final)} periods")
 
+    if df_plot_final.empty:
+        logger.error(f"No data left for {symbol} after filtering for {days} days.")
+        return None
 
     # Calculate S/R levels if requested, using ONLY the data being plotted
     support_levels_to_plot = None
     resistance_levels_to_plot = None
     if plot_sr:
-        if not df_plot_final.empty:
-            logger.info("Calculating top Support/Resistance levels on plotted data...")
-            # Instantiate the config for S/R calculation
+        logger.info("Calculating top Support/Resistance levels on plotted data...")
+        try:
             sr_config = AlgorithmConfig()
-            # Pass the DataFrame and the config object to identify_support_resistance
             all_sr_levels = identify_support_resistance(df_plot_final.reset_index().copy(), sr_config)
 
             if all_sr_levels:
-                # Filter and limit the S/R levels here before passing to plot function
-                try:
-                    current_price = df_plot_final['close'].iloc[-1]
-                    max_lines_per_type = AlgorithmConfig.MAX_SR_LINES
-
-                    # Separate, sort, and limit
-                    support = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl <= current_price], reverse=True) # Highest support first
-                    resistance = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl > current_price]) # Lowest resistance first
-
-                    support_levels_to_plot = support[:max_lines_per_type]
-                    resistance_levels_to_plot = resistance[:max_lines_per_type]
-
-                    logger.info(f"Identified {len(support_levels_to_plot)} support and {len(resistance_levels_to_plot)} resistance levels to plot.")
-
-                except IndexError:
-                    logger.error("Could not get current price to filter S/R levels.")
-                except Exception as filter_err:
-                    logger.error(f"Error filtering S/R levels: {filter_err}")
+                current_price = df_plot_final['close'].iloc[-1]
+                max_lines_per_type = AlgorithmConfig.MAX_SR_LINES
+                support = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl <= current_price], reverse=True)
+                resistance = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl > current_price])
+                support_levels_to_plot = support[:max_lines_per_type]
+                resistance_levels_to_plot = resistance[:max_lines_per_type]
+                logger.info(f"Identified {len(support_levels_to_plot)} support and {len(resistance_levels_to_plot)} resistance levels.")
             else:
                  logger.warning("Could not identify any S/R levels for the plotted period.")
-        else:
-            logger.warning("Cannot calculate S/R levels, no data to plot.")
+        except Exception as sr_err:
+            logger.error(f"Error calculating or filtering S/R levels: {sr_err}")
+
+
     # Create the plot using the final filtered data and relevant S/R levels
-    if not df_plot_final.empty:
-        # Pass the pre-filtered lists of support and resistance levels
-        plot_candlestick(df_plot_final, symbol, output_file, timeframe, title,
+    # Generate a simpler title for the web view
+    plot_title = f"{symbol} - Last {len(df_plot_final)} {timeframe.capitalize()} Periods"
+    success = plot_candlestick(df_plot_final, symbol, output_file=output_file, timeframe=timeframe, title=plot_title,
+                               support_levels=support_levels_to_plot,
+                               resistance_levels=resistance_levels_to_plot)
+
+    if success:
+        logger.info(f"Successfully generated and saved chart for {symbol} to {output_file}")
+        return relative_url
+    else:
+        logger.error(f"Failed to generate or save chart for {symbol}")
+        # Clean up potentially incomplete file
+        if os.path.exists(output_file):
+            try:
+                os.remove(output_file)
+            except OSError as e:
+                logger.warning(f"Could not remove potentially incomplete chart file '{output_file}': {e}")
+        return None
+
+
+def main():
+    """Main function to orchestrate the script execution when run directly."""
+    # Parse command line arguments
+    try:
+        args = parse_arguments()
+    except SystemExit:
+        return # Exit cleanly on --help or arg error
+
+    # Use the new function if output is specified, otherwise show plot interactively
+    if args.output:
+        # Call the generation function but handle the return value (URL not needed here)
+        chart_path = generate_and_save_chart(
+            symbol=args.symbol.strip().upper(),
+            days=args.days, # Pass days if provided
+            timeframe=args.timeframe,
+            plot_sr=args.sr
+        )
+        if chart_path:
+            print(f"Chart saved successfully. Relative path: {chart_path}")
+            # The actual file path is determined within generate_and_save_chart
+            # We could reconstruct it here if needed, but the function logs it.
+        else:
+            print(f"Failed to generate chart for {args.symbol}")
+    else:
+        # --- Original main logic for interactive plotting ---
+        symbol = args.symbol.strip().upper()
+        start_date = args.start
+        end_date = args.end
+        days = args.days
+        timeframe = args.timeframe
+        title = args.title
+        plot_sr = args.sr
+
+        raw_df = fetch_ohlc_data_db(symbol, start_date, end_date)
+        if raw_df is None or raw_df.empty:
+            logger.error(f"No data available for {symbol}")
+            return
+
+        df_processed = process_dataframe(raw_df, timeframe)
+        if df_processed is None or df_processed.empty:
+            logger.error(f"Data processing failed for {symbol}")
+            return
+
+        df_plot_final = df_processed.copy()
+        if days and days > 0:
+            if len(df_plot_final) > days:
+                df_plot_final = df_plot_final.iloc[-days:]
+                logger.info(f"Using most recent {len(df_plot_final)} periods for plot (requested {days})")
+            else:
+                 logger.info(f"Using all available {len(df_plot_final)} periods (less than requested {days})")
+        else:
+            logger.info(f"Using all available {len(df_plot_final)} periods")
+
+        if df_plot_final.empty:
+             logger.error(f"No data left for {symbol} after filtering.")
+             return
+
+        support_levels_to_plot = None
+        resistance_levels_to_plot = None
+        if plot_sr:
+            logger.info("Calculating top Support/Resistance levels on plotted data...")
+            try:
+                sr_config = AlgorithmConfig()
+                all_sr_levels = identify_support_resistance(df_plot_final.reset_index().copy(), sr_config)
+                if all_sr_levels:
+                    current_price = df_plot_final['close'].iloc[-1]
+                    max_lines_per_type = AlgorithmConfig.MAX_SR_LINES
+                    support = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl <= current_price], reverse=True)
+                    resistance = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl > current_price])
+                    support_levels_to_plot = support[:max_lines_per_type]
+                    resistance_levels_to_plot = resistance[:max_lines_per_type]
+                    logger.info(f"Identified {len(support_levels_to_plot)} support and {len(resistance_levels_to_plot)} resistance levels.")
+                else:
+                     logger.warning("Could not identify any S/R levels for the plotted period.")
+            except Exception as sr_err:
+                logger.error(f"Error calculating or filtering S/R levels: {sr_err}")
+
+        # Plot interactively (no output_file)
+        plot_candlestick(df_plot_final, symbol, output_file=None, timeframe=timeframe, title=title,
                          support_levels=support_levels_to_plot,
                          resistance_levels=resistance_levels_to_plot)
-    else:
-        # This case should ideally be caught earlier, but double-check
-        logger.error(f"Data processing failed for {symbol}")
 
 
 if __name__ == "__main__":

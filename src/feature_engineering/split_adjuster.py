@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Define directories using pathlib for better path handling
 # Define paths relative to the project root (assuming this script is in src/feature_engineering/)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-INCOMING_DIR = PROJECT_ROOT / "incoming"
-OUTPUT_DIR = PROJECT_ROOT / "splitadjusted"
+INCOMING_DIR = Path(config.INCOMING_DATA_DIR)
+OUTPUT_DIR = Path(config.SPLIT_ADJUSTED_DIR)
 # TICKER_FILE = PROJECT_ROOT / "data" / "metadata" / "russel.csv" # No longer needed, loaded via config
 
 # --- Helper Functions ---
@@ -222,32 +222,46 @@ def main():
             splits = api_client.get_splits_data(ticker_eod)
 
             if not splits:
-                # Keep this log message
-                # logging.info(f"Skipping {ticker}: No splits found.")
-                continue # Move to the next ticker
+                # No splits found, copy original data
+                logging.info(f"No splits found for {ticker}. Copying original OHLC data.")
+                ohlc_filepath = find_ohlc_file(ticker, INCOMING_DIR)
+                if not ohlc_filepath:
+                    logging.warning(f"Skipping {ticker}: No splits found, and original OHLC file not found in {INCOMING_DIR}.")
+                    error_count += 1
+                    continue # Skip to next ticker if original file not found
 
-            # 2. Find and Read Local OHLC Data (ONLY if splits were found)
-            # logging.info(f"Splits found for {ticker}. Proceeding to read local OHLC data.") # Reduced verbosity
-            ohlc_filepath = find_ohlc_file(ticker, INCOMING_DIR)
-            if not ohlc_filepath:
-                # Keep this warning
-                logging.warning(f"Skipping {ticker}: Splits found, but OHLC file not found in {INCOMING_DIR}.")
-                error_count += 1
-                continue
+                ohlc_data = read_ohlc_data(ohlc_filepath)
+                if ohlc_data is None or ohlc_data.empty:
+                    logging.warning(f"Skipping {ticker}: No splits found, and failed to read or empty original OHLC data from {ohlc_filepath.name}.")
+                    error_count += 1
+                    continue # Skip to next ticker if original data is bad
 
-            ohlc_data = read_ohlc_data(ohlc_filepath)
-            if ohlc_data is None or ohlc_data.empty:
-                 # Keep this warning
-                logging.warning(f"Skipping {ticker}: Splits found, but failed to read or empty OHLC data from {ohlc_filepath.name}.")
-                error_count += 1
-                continue
+                # Save the original, unadjusted data
+                save_adjusted_data(ticker, ohlc_data, OUTPUT_DIR)
+                processed_count += 1
+            else:
+                # Splits found, proceed with adjustment logic
+                # logging.info(f"Splits found for {ticker}. Proceeding to read local OHLC data.") # Reduced verbosity
+                ohlc_filepath = find_ohlc_file(ticker, INCOMING_DIR)
+                if not ohlc_filepath:
+                    # Keep this warning
+                    logging.warning(f"Skipping {ticker}: Splits found, but OHLC file not found in {INCOMING_DIR}.")
+                    error_count += 1
+                    continue
 
-            # 3. Adjust Data (We know splits exist at this point)
-            adjusted_data = adjust_ohlc_data(ohlc_data, splits)
+                ohlc_data = read_ohlc_data(ohlc_filepath)
+                if ohlc_data is None or ohlc_data.empty:
+                     # Keep this warning
+                    logging.warning(f"Skipping {ticker}: Splits found, but failed to read or empty OHLC data from {ohlc_filepath.name}.")
+                    error_count += 1
+                    continue
 
-            # 4. Save Adjusted Data
-            save_adjusted_data(ticker, adjusted_data, OUTPUT_DIR)
-            processed_count += 1
+                # 3. Adjust Data (We know splits exist at this point)
+                adjusted_data = adjust_ohlc_data(ohlc_data, splits)
+
+                # 4. Save Adjusted Data
+                save_adjusted_data(ticker, adjusted_data, OUTPUT_DIR)
+                processed_count += 1
 
         except Exception as e:
             # Keep error logging for individual ticker failures

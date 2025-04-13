@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime, timedelta, date
 from typing import Optional, Union, List, Dict, Set
 from typing import Optional, Union
+import src.config as config
 import logging
 
 # Configure logging
@@ -13,7 +14,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Define the directory for storing incoming data relative to this script's location
 # Using Path for better cross-platform compatibility
 # Point to the 'incoming' directory at the project root, relative to this file's location
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "incoming"
+DATA_DIR = Path(config.INCOMING_DATA_DIR)
 
 # Regex to parse filenames like TICKER_YYYYMMDD_YYYYMMDD.csv
 # It captures the ticker, start date, and end date.
@@ -240,6 +241,9 @@ def load_tickers_and_data_from_sources(sources: List[Dict[str, str]]) -> Dict[st
                 continue # Skip this file and try the next one
 
             df = pd.read_csv(file_path, sep=separator)
+            # Get initial count of tickers
+            initial_count = len(df)
+            logging.info(f"Initial count of tickers in {file_path}: {initial_count}")
 
             # --- Column Validation ---
             required_columns = [symbol_column]
