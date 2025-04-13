@@ -1,3 +1,4 @@
+flask
 requests
 python-dotenv
 pandas
@@ -7,3 +8,4 @@ mplfinance
 numpy
 scipy
 scikit-learn
+finnhub-python
