@@ -174,3 +174,5 @@ cython_debug/
 .pypirc
 incoming/
 splitadjusted/
+src/__pycache__/
+__pycache__/
