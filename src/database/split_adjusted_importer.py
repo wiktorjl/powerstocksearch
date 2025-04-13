@@ -1,11 +1,15 @@
 import os
 import json
+from typing import Dict, Optional, Set
 import psycopg2
 import psycopg2.extras
 import logging
 from datetime import datetime, timezone
 from src.config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT # Adjusted import
 from src.database.connection import get_db_connection # Import shared connection function
+from src.data_loading import local_file_loader as local_data
+from src import config
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -95,6 +99,25 @@ def insert_ohlc_batch(cursor, data):
         logging.error(f"Error during batch insert: {e}")
         raise # Re-raise to allow transaction rollback
 
+def insert_symbol_details(cursor, symbol_id, details):
+    """
+    Inserts symbol details into the database.
+    This function is a placeholder and should be implemented based on your schema.
+    """
+    # Example implementation (adjust according to your schema)
+    try:
+        cursor.execute("""
+            INSERT INTO symbols_details (symbol_id, name, sector, subsector)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (symbol_id) DO UPDATE
+            SET name = EXCLUDED.name,
+                sector = EXCLUDED.sector,
+                subsector = EXCLUDED.subsector;
+        """, (symbol_id, details['company'], details['sector'], details['subsector']))
+    except psycopg2.Error as e:
+        logging.error(f"Error inserting symbol details for ID {symbol_id}: {e}")
+        raise # Re-raise to allow transaction rollback
+
 # --- Main Execution ---
 def main():
     """Main function to orchestrate the data loading process."""
@@ -113,6 +136,12 @@ def main():
 
             total_inserted_count = 0
             processed_files = 0
+
+            # Load all symbols from sp500 and russel files and create a mapping of symbol to name
+            local_data.ensure_data_dir_exists()
+            all_tickers: Dict[str, Dict[str, Optional[str]]] = local_data.load_tickers_and_data_from_sources(config.TICKER_SOURCES)
+            # all_tickers: Set[str] = local_data.load_tickers_from_sources(config.TICKER_SOURCES)
+
 
             for filename in json_files:
                 file_path = os.path.join(data_dir, filename)
@@ -142,6 +171,13 @@ def main():
                         total_inserted_count += inserted_count
                     else:
                         logging.info(f"No valid data to insert for symbol '{symbol}'.")
+
+                    # Insert symbol details if available
+                    if symbol in all_tickers:
+                        details = all_tickers[symbol]
+                        insert_symbol_details(cursor, symbol_id, details)
+                    else:
+                        logging.warning(f"No details found for symbol '{symbol}' in ticker sources.")
 
                     processed_files += 1
 

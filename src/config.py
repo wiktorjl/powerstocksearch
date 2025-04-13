@@ -36,9 +36,9 @@ if not EODHD_API_KEY:
 # List of dictionaries, each specifying a CSV/TSV file and the column containing tickers.
 # You can add more sources here or potentially load this from an environment variable.
 TICKER_SOURCES: List[Dict[str, str]] = [
-    {"path": "data/metadata/russel.csv", "symbol_column": "Symbol"}, # Default
+    {"path": "data/metadata/russel.csv", "symbol_column": "Symbol", "name_column": "Company", "sector_column": "GICS Sector", "subsector_column": "GICS Sub-Industry"},
     # Example for another file (e.g., TSV):
-    {"path": "data/metadata/sp500.csv", "symbol_column": "Symbol"}
+    {"path": "data/metadata/sp500.csv", "symbol_column": "Symbol", "name_column": "Company", "sector_column": "GICS Sector", "subsector_column": "GICS Sub-Industry"},
 ]
 
 # You could potentially override TICKER_SOURCES via an environment variable

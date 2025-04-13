@@ -158,6 +158,82 @@ def load_tickers_from_sources(sources: List[Dict[str, str]]) -> Set[str]:
         logging.info(f"Loading tickers from {file_path} (Column: '{symbol_column}', Separator: '{separator}')")
 
         try:
+            if not file_path.is_file():
+                logging.error(f"Ticker source file not found: {file_path}")
+                continue
+
+            df = pd.read_csv(file_path, sep=separator)
+
+            if symbol_column not in df.columns:
+                logging.error(f"Column '{symbol_column}' not found in {file_path}. Available columns: {df.columns.tolist()}")
+                continue
+
+            # Extract tickers, handle NaN, convert to string, strip whitespace, and filter out empty strings
+            tickers_in_file = set()
+            if not df.empty and symbol_column in df.columns:
+                valid_tickers = df[symbol_column].dropna().astype(str).str.strip()
+                tickers_in_file = set(valid_tickers[valid_tickers != ''])
+
+            logging.info(f"Loaded {len(tickers_in_file)} unique tickers from {file_path}")
+            all_tickers.update(tickers_in_file)
+
+        except pd.errors.EmptyDataError:
+            logging.warning(f"Ticker source file is empty: {file_path}")
+        except FileNotFoundError:
+             logging.error(f"Ticker source file not found (double check): {file_path}")
+        except Exception as e:
+            logging.error(f"Error reading ticker file {file_path}: {e}")
+
+    logging.info(f"Total unique tickers loaded from all sources: {len(all_tickers)}")
+    return all_tickers
+
+
+# Placeholder for the old function if needed, or remove if load_tickers_and_data_from_sources replaces it entirely.
+# def load_tickers_from_sources(sources: List[Dict[str, str]]) -> Set[str]:
+#     pass
+
+def load_tickers_and_data_from_sources(sources: List[Dict[str, str]]) -> Dict[str, Dict[str, Optional[str]]]:
+    """
+    Loads ticker symbols and associated data (sector, subsector) from specified source files.
+
+    Args:
+        sources: A list of dictionaries. Each dictionary must contain:
+                 'path': Relative path to the CSV/TSV file from the project root.
+                 'symbol_column': Name of the column with ticker symbols.
+                 Optionally:
+                   'sector_column': Name of the column with sector information.
+                   'subsector_column': Name of the column with subsector information.
+                   'separator': Delimiter used in the file (defaults to ',').
+
+    Returns:
+        A dictionary where keys are unique ticker symbols (str) and values are
+        dictionaries containing 'sector' and 'subsector' (Optional[str]).
+        Returns an empty dictionary if no files are processed or errors occur.
+    """
+    all_ticker_data: Dict[str, Dict[str, Optional[str]]] = {}
+    project_root = Path(__file__).resolve().parent.parent.parent
+
+    if not sources:
+        logging.warning("No ticker sources provided in the configuration.")
+        return all_ticker_data
+
+    for source_info in sources:
+        file_path_str = source_info.get('path')
+        symbol_column = source_info.get('symbol_column')
+        sector_column = source_info.get('sector_column') # Optional
+        subsector_column = source_info.get('subsector_column') # Optional
+        company_column = source_info.get('name_column') # Optional
+
+        separator = source_info.get('separator', ',') # Default to comma
+
+        if not file_path_str or not symbol_column:
+            logging.warning(f"Skipping invalid source entry in configuration: {source_info}. Missing 'path' or 'symbol_column'.")
+            continue
+
+        file_path = project_root / file_path_str
+        logging.info(f"Loading tickers from {file_path} (Column: '{symbol_column}', Separator: '{separator}')")
+
+        try:
             # Check if file exists before attempting to read
             if not file_path.is_file():
                 logging.error(f"Ticker source file not found: {file_path}")
@@ -165,16 +241,44 @@ def load_tickers_from_sources(sources: List[Dict[str, str]]) -> Set[str]:
 
             df = pd.read_csv(file_path, sep=separator)
 
-            if symbol_column not in df.columns:
-                logging.error(f"Column '{symbol_column}' not found in {file_path}. Available columns: {df.columns.tolist()}")
+            # --- Column Validation ---
+            required_columns = [symbol_column]
+            optional_columns = {'sector': sector_column, 'subsector': subsector_column, 'company': company_column}
+            missing_required = [col for col in required_columns if col and col not in df.columns] # Check if col is not None/empty before checking existence
+            available_optional = {key: col for key, col in optional_columns.items() if col and col in df.columns}
+            missing_optional = {key: col for key, col in optional_columns.items() if col and col not in df.columns}
+
+            if missing_required:
+                logging.error(f"Required column(s) '{', '.join(missing_required)}' not found in {file_path}. Available: {df.columns.tolist()}")
                 continue # Skip this file
 
-            # Extract tickers, convert to string, strip whitespace, and filter out empty strings
-            tickers_in_file = set(df[symbol_column].astype(str).str.strip())
-            tickers_in_file.discard('') # Remove potential empty strings
+            if missing_optional:
+                 logging.warning(f"Optional column(s) '{', '.join(missing_optional.values())}' specified but not found in {file_path}. Proceeding without them.")
 
-            logging.info(f"Loaded {len(tickers_in_file)} unique tickers from {file_path}")
-            all_tickers.update(tickers_in_file)
+            # --- Data Extraction ---
+            count = 0
+            for index, row in df.iterrows():
+                # Ensure row[symbol_column] is not NaN before converting to str
+                if pd.isna(row[symbol_column]):
+                    continue
+                ticker = str(row[symbol_column]).strip()
+                if not ticker: # Skip empty tickers
+                    continue
+
+                sector = str(row[available_optional['sector']]).strip() if 'sector' in available_optional and pd.notna(row[available_optional['sector']]) else None
+                subsector = str(row[available_optional['subsector']]).strip() if 'subsector' in available_optional and pd.notna(row[available_optional['subsector']]) else None
+                company = str(row[available_optional['company']]).strip() if 'company' in available_optional and pd.notna(row[available_optional['company']]) else None
+                # Add or update ticker data, potentially overwriting from previous sources if duplicates exist
+                count += 1
+
+
+                if subsector is None or subsector == "" or len(subsector) < 1:
+                    subsector = "NONE"
+
+                all_ticker_data[ticker] = {'sector': sector, 'subsector': subsector, 'company': company}
+
+
+            logging.info(f"Processed {count} tickers with data from {file_path}")
 
         except pd.errors.EmptyDataError:
             logging.warning(f"Ticker source file is empty: {file_path}")
@@ -185,8 +289,8 @@ def load_tickers_from_sources(sources: List[Dict[str, str]]) -> Set[str]:
             # Decide if you want to stop processing other files on error
             # For robustness, we continue to the next file by default
 
-    logging.info(f"Total unique tickers loaded from all sources: {len(all_tickers)}")
-    return all_tickers
+    logging.info(f"Total unique tickers loaded with data from all sources: {len(all_ticker_data)}")
+    return all_ticker_data
 
 
 # Example Usage (Optional - for testing)

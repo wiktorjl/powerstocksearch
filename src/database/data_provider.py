@@ -80,6 +80,106 @@ def fetch_ohlc_data_db(symbol, start_date=None, end_date=None):
             connection.close()
         return None
 
+
+def list_symbols_db(prefix=None):
+    """
+    Fetch a list of all symbols from the database, optionally filtered by prefix.
+
+    Args:
+        prefix (str, optional): A prefix to filter symbols by. Defaults to None (no filter).
+
+    Returns:
+        list: A list of symbol strings, or None if fetch fails.
+    """
+    connection = get_db_connection()
+    if not connection:
+        return None
+
+    try:
+        cursor = connection.cursor()
+        if prefix:
+            query = "SELECT symbol FROM symbols WHERE symbol ILIKE %s ORDER BY symbol;"
+            # Use ILIKE for case-insensitive matching and add wildcard
+            cursor.execute(query, (prefix + '%',))
+            logger.info(f"Fetching symbols starting with prefix: {prefix}")
+        else:
+            query = "SELECT symbol FROM symbols ORDER BY symbol;"
+            cursor.execute(query)
+            logger.info("Fetching all symbols")
+
+        symbols = [item[0] for item in cursor.fetchall()]
+        cursor.close()
+        connection.close()
+
+        if not symbols:
+            logger.warning(f"No symbols found" + (f" with prefix {prefix}" if prefix else ""))
+            return [] # Return empty list instead of None for no results
+
+        logger.info(f"Retrieved {len(symbols)} symbols")
+        return symbols
+
+    except Exception as e:
+        logger.error(f"Error fetching symbols: {e}")
+        if connection:
+            connection.close()
+        return None
+
+def fetch_symbol_details_db(symbol):
+    """
+    Fetch details for a specific symbol from the database.
+    (Currently fetches basic info like symbol_id, name, exchange)
+
+    Args:
+        symbol (str): The stock ticker symbol.
+
+    Returns:
+        dict: A dictionary containing symbol details, or None if not found or error.
+    """
+    connection = get_db_connection()
+    if not connection:
+        return None
+
+    query = """
+    SELECT symbol_id, symbol, sector, subsector, name, "timestamp", open, high, low, close, volume
+	FROM public.symbol_info_basic 
+    WHERE symbol = %s;
+    """
+
+    try:
+        cursor = connection.cursor()
+        logger.info(f"Fetching details for symbol: {symbol}")
+        cursor.execute(query, (symbol,))
+        result = cursor.fetchone()
+        cursor.close()
+        connection.close()
+
+        if result:
+            # Convert row to dictionary
+            details = {
+                'symbol_id': result[0],
+                'symbol': result[1],
+                'sector': result[2],
+                'subsector': result[3],
+                'name': result[4],
+                'timestamp': result[5],
+                'open': result[6],
+                'high': result[7],
+                'low': result[8],
+                'close': result[9],
+                'volume': result[10]
+            }
+            logger.info(f"Retrieved details for {symbol}")
+            return details
+        else:
+            logger.warning(f"No details found for symbol {symbol}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error fetching symbol details for {symbol}: {e}")
+        if connection:
+            connection.close()
+        return None
+
 # Potential future expansion:
 # def fetch_ohlc_data_api(symbol, start_date=None, end_date=None):
 #     # Placeholder for fetching data from an API
