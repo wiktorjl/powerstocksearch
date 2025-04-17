@@ -2,6 +2,7 @@ import os
 import re
 import pandas as pd
 from pathlib import Path
+import json
 from datetime import datetime, timedelta, date
 from typing import Optional, Union, List, Dict, Set
 from typing import Optional, Union
@@ -15,6 +16,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Using Path for better cross-platform compatibility
 # Point to the 'incoming' directory at the project root, relative to this file's location
 DATA_DIR = Path(config.INCOMING_DATA_DIR)
+
+
+# Define the directory for storing split data
+SPLIT_DATA_DIR = DATA_DIR.parent / 'splits' # Store alongside 'incoming'
 
 # Regex to parse filenames like TICKER_YYYYMMDD_YYYYMMDD.csv
 # It captures the ticker, start date, and end date.
@@ -32,6 +37,20 @@ def ensure_data_dir_exists():
         logging.error(f"Failed to create data directory {DATA_DIR}: {e}")
         # Depending on the application's needs, you might want to raise the exception
         # raise
+
+
+def ensure_split_data_dir_exists():
+    """
+    Creates the split data directory if it doesn't already exist.
+    """
+    try:
+        SPLIT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        logging.info(f"Ensured split data directory exists: {SPLIT_DATA_DIR.resolve()}")
+    except OSError as e:
+        logging.error(f"Failed to create split data directory {SPLIT_DATA_DIR}: {e}")
+        # Depending on the application's needs, you might want to raise the exception
+        # raise
+
 
 def get_latest_date_for_ticker(ticker: str) -> Optional[date]:
     """
@@ -123,6 +142,125 @@ def save_data_to_csv(dataframe: pd.DataFrame, filename: Path):
     except Exception as e:
         logging.error(f"Failed to save DataFrame to {filename}: {e}")
         # Consider re-raising or handling more specifically
+
+
+
+# --- Split Data Handling (JSON) ---
+
+def generate_split_filename(ticker: str) -> Path:
+    """
+    Generates the standard filename for storing split data for a ticker.
+
+    Args:
+        ticker: The stock ticker symbol.
+
+    Returns:
+        A Path object representing the full path to the JSON file.
+    """
+    # Sanitize ticker for filename
+    safe_ticker = ticker.replace('.', '_').replace('-', '_')
+    filename = f"{safe_ticker}_splits.json"
+    return SPLIT_DATA_DIR / filename
+
+def load_split_data(ticker: str) -> List[Dict]:
+    """
+    Loads split data for a ticker from its JSON file.
+
+    Args:
+        ticker: The stock ticker symbol.
+
+    Returns:
+        A list of dictionaries representing the split data, or an empty list
+        if the file doesn't exist or contains invalid JSON.
+    """
+    filename = generate_split_filename(ticker)
+    if not filename.is_file():
+        # logging.info(f"No split data file found for {ticker} at {filename}")
+        return []
+
+    try:
+        with open(filename, 'r') as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                # Basic validation: check if items are dicts with 'date'
+                if all(isinstance(item, dict) and 'date' in item for item in data):
+                    # logging.info(f"Successfully loaded {len(data)} split records for {ticker} from {filename}")
+                    return data
+                else:
+                    logging.warning(f"Invalid format in split data file {filename}. Expected list of dicts with 'date'.")
+                    return []
+            else:
+                 logging.warning(f"Invalid format in split data file {filename}. Expected a JSON list.")
+                 return []
+    except json.JSONDecodeError:
+        logging.error(f"Failed to decode JSON from split data file: {filename}")
+        return []
+    except Exception as e:
+        logging.error(f"Error loading split data for {ticker} from {filename}: {e}")
+        return []
+
+def save_split_data(ticker: str, split_data: List[Dict]):
+    """
+    Saves split data for a ticker to a JSON file, overwriting existing content.
+
+    Args:
+        ticker: The stock ticker symbol.
+        split_data: A list of dictionaries representing the split data.
+                    Each dictionary should contain at least a 'date' key.
+    """
+    filename = generate_split_filename(ticker)
+    try:
+        # Ensure the directory exists
+        filename.parent.mkdir(parents=True, exist_ok=True)
+
+        # Sort data by date before saving (optional but good practice)
+        # Assuming date format is 'YYYY-MM-DD'
+        sorted_data = sorted(split_data, key=lambda x: x.get('date', '0000-00-00'))
+
+        with open(filename, 'w') as f:
+            json.dump(sorted_data, f, indent=4)
+        logging.info(f"Successfully saved {len(sorted_data)} split records for {ticker} to {filename}")
+    except TypeError as e:
+        logging.error(f"Data provided for saving splits for {ticker} is not JSON serializable: {e}")
+    except Exception as e:
+        logging.error(f"Failed to save split data for {ticker} to {filename}: {e}")
+
+def get_latest_split_date(ticker: str) -> Optional[date]:
+    """
+    Loads split data for a ticker and finds the latest date among the splits.
+
+    Args:
+        ticker: The stock ticker symbol.
+
+    Returns:
+        The latest split date found as a datetime.date object, or None if no
+        split data exists or dates are invalid.
+    """
+    split_data = load_split_data(ticker)
+    latest_date: Optional[date] = None
+
+    if not split_data:
+        return None
+
+    for split_record in split_data:
+        date_str = split_record.get('date')
+        if date_str:
+            try:
+                current_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                if latest_date is None or current_date > latest_date:
+                    latest_date = current_date
+            except ValueError:
+                logging.warning(f"Invalid date format '{date_str}' found in split data for {ticker}. Skipping.")
+                continue
+
+    # if latest_date:
+    #     logging.info(f"Latest split date found for {ticker} is {latest_date.strftime('%Y-%m-%d')}")
+    # else:
+    #     logging.info(f"No valid split dates found for {ticker} in existing data.")
+
+    return latest_date
+
+# --- End Split Data Handling ---
 
 
 def load_tickers_from_sources(sources: List[Dict[str, str]]) -> Set[str]:

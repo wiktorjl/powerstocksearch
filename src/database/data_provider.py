@@ -9,6 +9,7 @@ from a PostgreSQL database.
 import logging
 import psycopg2
 import pandas as pd
+from decimal import Decimal # Import Decimal for type checking if needed
 from src.config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT # Adjusted import
 from src.database.connection import get_db_connection # Import shared connection function
 
@@ -19,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 def fetch_ohlc_data_db(symbol, start_date=None, end_date=None):
     """
-    Fetch OHLC data for a given symbol from the database with optional date range.
+    Fetch **split-adjusted** OHLC data for a given symbol from the database
+    with optional date range. Adjustment uses the 'splits' table.
 
     Args:
         symbol (str): The stock ticker symbol
@@ -27,7 +29,7 @@ def fetch_ohlc_data_db(symbol, start_date=None, end_date=None):
         end_date (str, optional): End date in 'YYYY-MM-DD' format
 
     Returns:
-        pandas.DataFrame: DataFrame containing OHLC data or None if fetch fails
+        pandas.DataFrame: DataFrame containing split-adjusted OHLC data or None if fetch fails
     """
     connection = get_db_connection()
     if not connection:
@@ -35,43 +37,113 @@ def fetch_ohlc_data_db(symbol, start_date=None, end_date=None):
 
     # Base query
     query = """
-    SELECT ohlc_data.timestamp,
-           ohlc_data.open,
-           ohlc_data.high,
-           ohlc_data.low,
-           ohlc_data.close,
-           ohlc_data.volume
-    FROM ohlc_data
-    JOIN symbols ON ohlc_data.symbol_id = symbols.symbol_id
-    WHERE symbols.symbol = %s
+    SELECT o.timestamp,
+           o.open,
+           o.high,
+           o.low,
+           o.close,
+           o.volume,
+           s.symbol_id -- Include symbol_id for split lookup
+    FROM ohlc_data o
+    JOIN symbols s ON o.symbol_id = s.symbol_id
+    WHERE s.symbol = %s
     """
 
     params = [symbol]
 
     # Add date filters if provided
     if start_date:
-        query += " AND ohlc_data.timestamp >= %s"
+        query += " AND o.timestamp >= %s"
         params.append(start_date)
 
     if end_date:
-        query += " AND ohlc_data.timestamp <= %s"
+        query += " AND o.timestamp <= %s"
         params.append(end_date)
 
-    query += " ORDER BY ohlc_data.timestamp;"
+    query += " ORDER BY o.timestamp;"
 
     try:
         logger.info(f"Fetching data for {symbol}" +
                    (f" from {start_date}" if start_date else "") +
                    (f" to {end_date}" if end_date else ""))
 
+        # Fetch raw data first
         df = pd.read_sql_query(query, connection, params=params)
-        connection.close()
 
         if df.empty:
-            logger.warning(f"No data found for symbol {symbol}")
+            logger.warning(f"No raw OHLC data found for symbol {symbol}")
+            connection.close()
             return None
 
-        logger.info(f"Retrieved {len(df)} data points")
+        logger.info(f"Retrieved {len(df)} raw OHLC data points for {symbol}. Checking for splits...")
+
+        # Ensure timestamp is datetime type for comparison
+        # Ensure timestamp is datetime type and convert to UTC for consistent comparison
+        df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+
+        # Get symbol_id from the first row (it's the same for all rows in this query)
+        symbol_id = df['symbol_id'].iloc[0]
+
+        # Fetch splits using the standard column name
+        splits_query = """
+        SELECT split_date, ratio
+        FROM splits
+        WHERE symbol_id = %s
+        ORDER BY split_date DESC;
+        """
+        # Convert numpy.int64 symbol_id to standard Python int for psycopg2 compatibility
+        splits_df = pd.read_sql_query(splits_query, connection, params=[int(symbol_id)])
+
+        connection.close() # Close connection after all DB queries
+
+        if not splits_df.empty:
+            logger.info(f"Found {len(splits_df)} splits for symbol {symbol} (ID: {symbol_id}). Applying adjustments...")
+            # Ensure split_date is datetime type
+            # Ensure split_date is datetime type and convert to UTC for consistent comparison
+            # Ensure split_date is datetime type (using correct column name) and convert to UTC
+            # Ensure split_date is datetime type and convert to UTC
+            splits_df['split_date'] = pd.to_datetime(splits_df['split_date'], utc=True)
+
+            # Apply splits using backward propagation
+            for index, split in splits_df.iterrows():
+                # Access the column using the correct name with the leading space
+                # Access the column using the standard name
+                split_date = split['split_date']
+                # Ratio from DB is the adjustment factor (Old/New)
+                # Ensure ratio is float, not Decimal, for pandas operations
+                adj_factor = float(split['ratio'])
+
+                if adj_factor <= 0:
+                    logger.warning(f"Skipping split on {split_date.date()} for {symbol} due to invalid ratio: {adj_factor}")
+                    continue
+
+                # Apply adjustment to rows *before* the split date
+                mask = df['timestamp'] < split_date
+                if mask.any():
+                    # Adjust Price columns (O, H, L, C)
+                    price_cols = ['open', 'high', 'low', 'close']
+                    df.loc[mask, price_cols] = df.loc[mask, price_cols] * adj_factor
+
+                    # Adjust Volume (inverse factor)
+                    # Volume factor = New / Old = 1 / adj_factor
+                    if adj_factor != 0:
+                        volume_factor = 1.0 / adj_factor
+                        # Calculate new volume, round, and convert to int before assignment
+                        # Ensure volume is numeric first, handle potential non-numeric data if necessary
+                        df['volume'] = pd.to_numeric(df['volume'], errors='coerce').fillna(0) # Handle potential errors/NaN
+                        new_volume = (df.loc[mask, 'volume'] * volume_factor).round().astype(int)
+                        df.loc[mask, 'volume'] = new_volume
+                    else:
+                         logger.warning(f"Cannot adjust volume for split on {split_date.date()} for {symbol} due to zero adjustment factor.")
+
+                    logger.info(f"Applied split ratio {adj_factor:.4f} on {split_date.date()} for {symbol}, adjusted {mask.sum()} records.")
+        else:
+            logger.info(f"No splits found in database for symbol {symbol}. Returning unadjusted data.")
+
+        # Drop the symbol_id column before returning, as it's not part of the original OHLC schema expected
+        df = df.drop(columns=['symbol_id'])
+
+        logger.info(f"Returning {len(df)} split-adjusted data points for {symbol}")
         return df
 
     except Exception as e:
@@ -126,23 +198,45 @@ def list_symbols_db(prefix=None):
 
 def fetch_symbol_details_db(symbol):
     """
-    Fetch details for a specific symbol from the database.
-    (Currently fetches basic info like symbol_id, name, exchange)
+    Fetch details for a specific symbol by joining 'symbols', 'symbols_details',
+    and 'company_profile' tables.
 
     Args:
         symbol (str): The stock ticker symbol.
 
     Returns:
-        dict: A dictionary containing symbol details, or None if not found or error.
+        dict: A dictionary containing available symbol details from company_profile,
+              or None if not found or error.
     """
     connection = get_db_connection()
     if not connection:
         return None
 
+    # Query joins symbols, symbols_details, and company_profile
+    # using INNER JOINs to ensure all details exist.
     query = """
-    SELECT symbol_id, symbol, sector, subsector, name, "timestamp", open, high, low, close, volume, logo, weburl
- FROM public.symbol_info_basic
-    WHERE symbol = %s;
+    SELECT
+        s.symbol_id,
+        s.symbol,
+        sd.sector,          -- From symbols_details
+        sd.subsector,       -- From symbols_details
+        sd.name AS details_name, -- Alias to distinguish from cp.name if needed, though schema shows name only in sd
+        cp.country,         -- From company_profile
+        cp.currency,        -- From company_profile
+        cp.exchange,        -- From company_profile
+        cp.finnhub_industry,-- From company_profile
+        cp.ipo,             -- From company_profile
+        cp.logo,            -- From company_profile
+        cp.market_capitalization, -- From company_profile
+        cp.name AS profile_name, -- Alias to distinguish from sd.name
+        cp.phone,           -- From company_profile
+        cp.share_outstanding, -- From company_profile
+        cp.ticker,          -- From company_profile
+        cp.weburl           -- From company_profile
+    FROM symbols s
+    INNER JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
+    INNER JOIN company_profile cp ON s.symbol_id = cp.symbol_id
+    WHERE s.symbol = %s;
     """
 
     try:
@@ -155,20 +249,26 @@ def fetch_symbol_details_db(symbol):
 
         if result:
             # Convert row to dictionary
+            # Map results to dictionary based on the columns selected in the corrected query
+            # Map results based on the new query structure
             details = {
                 'symbol_id': result[0],
                 'symbol': result[1],
-                'sector': result[2],
-                'subsector': result[3],
-                'name': result[4],
-                'timestamp': result[5],
-                'open': result[6],
-                'high': result[7],
-                'low': result[8],
-                'close': result[9],
-                'volume': result[10],
-                'logo': result[11],      # Use the actual column name 'logo'
-                'weburl': result[12]     # Use the actual column name 'weburl'
+                'sector': result[2],         # From symbols_details
+                'subsector': result[3],      # From symbols_details
+                'name': result[4] or result[12], # Use name from symbols_details, fallback to company_profile if needed (though schema shows it only in sd)
+                'country': result[5],        # From company_profile
+                'currency': result[6],       # From company_profile
+                'exchange': result[7],       # From company_profile
+                'finnhub_industry': result[8],# From company_profile
+                'ipo': result[9],            # From company_profile
+                'logo': result[10],           # From company_profile
+                'market_capitalization': result[11], # From company_profile
+                # 'profile_name': result[12], # Included if needed, but 'name' (result[4]) is likely primary
+                'phone': result[13],          # From company_profile
+                'share_outstanding': result[14],# From company_profile
+                'ticker': result[15],         # From company_profile
+                'weburl': result[16]          # From company_profile
             }
             logger.info(f"Retrieved details for {symbol}")
             return details

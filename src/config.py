@@ -48,6 +48,7 @@ STOCK_DATA_BASE_DIR = os.getenv("STOCK_DATA_BASE_DIR", "/home/user/stockdata")
 COMPANY_INFO_DIR = os.path.join(STOCK_DATA_BASE_DIR, "company_info")
 SPLIT_ADJUSTED_DIR = os.path.join(STOCK_DATA_BASE_DIR, "splitadjusted")
 INCOMING_DATA_DIR = os.path.join(STOCK_DATA_BASE_DIR, "incoming")
+SPLIT_DATA_DIR = os.path.join(STOCK_DATA_BASE_DIR, "splits") # Directory for split data JSON files
 
 # --- Ticker Loading Configuration ---
 # List of dictionaries, each specifying a CSV/TSV file and the column containing tickers.

@@ -74,7 +74,6 @@ def adjust_levels_with_weights(levels: list, points: list, decay_factor: float, 
         # Calculate weights and weighted average
         total_weight = 0.0
         weighted_price_sum = 0.0
-        valid_points_count = 0
 
         for p_data in nearby_points:
             point_date = p_data['date']
@@ -93,13 +92,11 @@ def adjust_levels_with_weights(levels: list, points: list, decay_factor: float, 
             if weight > 0: # Ensure weight is valid
                 weighted_price_sum += price * weight
                 total_weight += weight
-                valid_points_count += 1
 
         # Calculate the weighted average price for the level
         if total_weight > 0:
             weighted_average_price = weighted_price_sum / total_weight
             weighted_levels.append(weighted_average_price)
-            # print(f"Level {level:.2f} adjusted to {weighted_average_price:.2f} using {valid_points_count} points.")
         else:
             # Fallback: if total weight is zero (e.g., all points too old or decay factor too high),
             # keep the original level or use simple average of nearby points.

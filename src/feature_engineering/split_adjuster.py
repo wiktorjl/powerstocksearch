@@ -3,45 +3,44 @@ import pandas as pd
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple, Set
+from typing import List, Dict, Any, Optional, Set
 
 # Import project modules
 from src import config
-from src.data_acquisition.eod_downloader import EodApiClient # Updated import path
 from src.data_loading import local_file_loader as local_data # Updated import path and alias
 
+# Removed EodApiClient import as we'll read splits locally
 # --- Configuration ---
 # Keep INFO level for required messages, warnings, and errors
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define directories using pathlib for better path handling
 # Define paths relative to the project root (assuming this script is in src/feature_engineering/)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 INCOMING_DIR = Path(config.INCOMING_DATA_DIR)
 OUTPUT_DIR = Path(config.SPLIT_ADJUSTED_DIR)
+SPLIT_DATA_DIR = Path(config.SPLIT_DATA_DIR) # Directory containing split JSON files
 # TICKER_FILE = PROJECT_ROOT / "data" / "metadata" / "russel.csv" # No longer needed, loaded via config
 
 # --- Helper Functions ---
 
 # Removed read_tickers function, using centralized loader now.
-def find_ohlc_file(symbol: str, directory: Path) -> Optional[Path]:
-    """Finds the OHLC CSV file for a given symbol in the specified directory."""
-    # Sanitize symbol for filename matching (consistent with local_data.py)
+def find_ohlc_files(symbol: str, directory: Path) -> List[Path]:
+    """Finds all OHLC CSV files for a given symbol, sorted alphabetically."""
+    # Sanitize symbol for filename matching
     safe_symbol = symbol.replace('.', '_').replace('-', '_').strip()
     try:
-        # Look for files matching the pattern TICKER_YYYYMMDD_YYYYMMDD.csv
-        matching_files = list(directory.glob(f"{safe_symbol}_*.csv"))
+        # Look for files matching the pattern TICKER_*.csv
+        matching_files = sorted(list(directory.glob(f"{safe_symbol}_*.csv"))) # Sort ensures chronological order if dates are in filename
         if not matching_files:
-            # Keep this warning as it indicates a potential data issue when splits *are* found
-            logging.warning(f"No OHLC file found for ticker {symbol} in {directory} (expected pattern: {safe_symbol}_*.csv)")
-            return None
-        if len(matching_files) > 1:
-            # Keep this warning
-            logging.warning(f"Multiple OHLC files found for ticker {symbol} in {directory}. Using {matching_files[0].name}")
-        return matching_files[0]
+            # Log info level, as it might be expected for some tickers
+            logging.info(f"No OHLC files found for ticker {symbol} in {directory} (pattern: {safe_symbol}_*.csv)")
+        # else: # Log if multiple files are found for clarity
+            # if len(matching_files) > 1:
+                # logging.info(f"Found {len(matching_files)} OHLC files for ticker {symbol}.")
+        return matching_files # Return the list of paths
     except Exception as e:
-        logging.error(f"Error searching for OHLC file for ticker {symbol} in {directory}: {e}")
-        return None
+        logging.error(f"Error searching for OHLC files for ticker {symbol} in {directory}: {e}")
+        return [] # Return empty list on error
 
 def read_ohlc_data(filepath: Path) -> Optional[pd.DataFrame]:
     """Reads OHLC data from a CSV file into a pandas DataFrame."""
@@ -64,6 +63,45 @@ def read_ohlc_data(filepath: Path) -> Optional[pd.DataFrame]:
         return None
     except Exception as e:
         logging.error(f"Error reading OHLC file {filepath}: {e}")
+        return None
+
+def read_split_data(symbol: str, directory: Path) -> Optional[List[Dict[str, Any]]]:
+    """Reads split data from a JSON file for a given symbol."""
+    # Sanitize symbol for filename matching
+    safe_symbol = symbol.replace('.', '_').replace('-', '_').strip()
+    split_filepath = directory / f"{safe_symbol}_splits.json" # Expecting SYMBOL_splits.json
+
+    if not split_filepath.is_file():
+        # It's common for stocks to have no splits, so INFO level is appropriate
+        logging.info(f"No split data file found for ticker {symbol} at {split_filepath}")
+        return None # Return None to indicate no splits found, not an error
+
+    try:
+        with open(split_filepath, 'r') as f:
+            splits_data = json.load(f)
+
+        # Basic validation: Check if it's a list
+        if not isinstance(splits_data, list):
+            logging.error(f"Invalid format in split file {split_filepath}: Expected a JSON list.")
+            return None # Indicate error by returning None
+
+        # Optional: Validate structure of list items (e.g., contain 'date' and 'split')
+        validated_splits = []
+        for item in splits_data:
+            if isinstance(item, dict) and 'date' in item and 'split' in item:
+                 # Further validation can be added here (e.g., date format, split format)
+                 validated_splits.append(item)
+            else:
+                logging.warning(f"Skipping invalid split entry in {split_filepath}: {item}")
+
+        # logging.info(f"Read {len(validated_splits)} split records from {split_filepath}") # Reduced verbosity
+        return validated_splits if validated_splits else None # Return None if list is empty after validation
+
+    except json.JSONDecodeError:
+        logging.error(f"Error decoding JSON from split file: {split_filepath}")
+        return None
+    except Exception as e:
+        logging.error(f"Error reading split file {split_filepath}: {e}")
         return None
 
 def parse_split_ratio(split_str: str) -> Optional[float]:
@@ -147,7 +185,7 @@ def adjust_ohlc_data(ohlc_df: pd.DataFrame, splits: List[Dict[str, Any]]) -> pd.
     return adjusted_df
 
 def save_adjusted_data(ticker: str, data: pd.DataFrame, directory: Path):
-    """Saves the adjusted data DataFrame to a JSON file."""
+    """Saves the adjusted data DataFrame to a CSV file."""
     if data is None or data.empty:
         logging.warning(f"No adjusted data to save for ticker {ticker}.")
         return
@@ -159,18 +197,17 @@ def save_adjusted_data(ticker: str, data: pd.DataFrame, directory: Path):
         logging.error(f"Failed to create output directory {directory}: {e}")
         return
 
-    output_path = directory / f"{ticker}.json"
+    # Save as CSV, using the ticker as the filename stem
+    output_path = directory / f"{ticker}.csv"
 
     try:
-        # Convert DataFrame to list of dictionaries (JSON records format)
-        # Convert Timestamp to ISO 8601 string format for JSON compatibility
-        data_dict = data.copy()
-        data_dict['Date'] = data_dict['Date'].dt.strftime('%Y-%m-%d')
-        result_json = data_dict.to_dict(orient='records')
+        # Ensure 'Date' column is in 'YYYY-MM-DD' format for consistency
+        data_to_save = data.copy()
+        data_to_save['Date'] = pd.to_datetime(data_to_save['Date']).dt.strftime('%Y-%m-%d')
 
-        with open(output_path, 'w') as f:
-            json.dump(result_json, f, indent=4)
-        # logging.info(f"Successfully saved adjusted data for {ticker} to {output_path}") # Reduced verbosity
+        # Save to CSV, excluding the DataFrame index
+        data_to_save.to_csv(output_path, index=False, date_format='%Y-%m-%d')
+        logging.info(f"Successfully saved combined and adjusted data for {ticker} to {output_path}")
 
     except Exception as e:
         logging.error(f"Failed to save adjusted data for {ticker} to {output_path}: {e}")
@@ -182,13 +219,7 @@ def main():
     logging.info("Starting stock split adjustment process...") # Keep start message
 
     # --- Initialization ---
-    # Ensure API key is loaded
-    if not config.EODHD_API_KEY:
-        logging.error("EODHD_API_KEY not found. Please set it in the .env file.")
-        return # Exit if no API key
-
-    # Initialize EOD API client
-    api_client = EodApiClient(config.EODHD_API_KEY)
+    # Removed API key check and EOD client initialization
 
     # Ensure output directory exists
     try:
@@ -216,52 +247,59 @@ def main():
     for ticker in tickers:
         # logging.info(f"--- Processing ticker: {ticker} ---") # Reduced verbosity
         try:
-            # 1. Fetch Split Data
-            # Assuming tickers in russel.csv might not have .US suffix, add it if needed
-            ticker_eod = ticker if '.' in ticker else f"{ticker}.US"
-            splits = api_client.get_splits_data(ticker_eod)
+            # 1. Read Local Split Data
+            splits = read_split_data(ticker, SPLIT_DATA_DIR)
 
+            # 1b. Find all OHLC files for the ticker
+            ohlc_filepaths = find_ohlc_files(ticker, INCOMING_DIR)
+
+            if not ohlc_filepaths:
+                # If no OHLC files are found at all, log and skip
+                logging.warning(f"Skipping {ticker}: No OHLC files found in {INCOMING_DIR}.")
+                error_count += 1
+                continue
+
+            # 2. Read and Combine OHLC Data from all found files
+            all_ohlc_data = []
+            for ohlc_filepath in ohlc_filepaths:
+                df_part = read_ohlc_data(ohlc_filepath)
+                if df_part is not None and not df_part.empty:
+                    all_ohlc_data.append(df_part)
+                else:
+                    logging.warning(f"Could not read or empty data from {ohlc_filepath.name} for ticker {ticker}.")
+                    # Optionally, consider this an error and skip the ticker
+                    # error_count += 1
+                    # continue # This would skip the ticker if any file fails
+
+            if not all_ohlc_data:
+                logging.warning(f"Skipping {ticker}: No valid OHLC data could be read from any found files.")
+                error_count += 1
+                continue
+
+            # Concatenate, sort by date, and remove duplicates (keeping the last entry for a given date)
+            combined_ohlc_data = pd.concat(all_ohlc_data, ignore_index=True)
+            combined_ohlc_data = combined_ohlc_data.sort_values(by='Date', ascending=True)
+            combined_ohlc_data = combined_ohlc_data.drop_duplicates(subset=['Date'], keep='last')
+            combined_ohlc_data = combined_ohlc_data.reset_index(drop=True)
+            logging.info(f"Combined {len(combined_ohlc_data)} unique date records for {ticker} from {len(ohlc_filepaths)} file(s).")
+
+
+            # 3. Adjust Data (using combined data)
             if not splits:
-                # No splits found, copy original data
-                logging.info(f"No splits found for {ticker}. Copying original OHLC data.")
-                ohlc_filepath = find_ohlc_file(ticker, INCOMING_DIR)
-                if not ohlc_filepath:
-                    logging.warning(f"Skipping {ticker}: No splits found, and original OHLC file not found in {INCOMING_DIR}.")
-                    error_count += 1
-                    continue # Skip to next ticker if original file not found
-
-                ohlc_data = read_ohlc_data(ohlc_filepath)
-                if ohlc_data is None or ohlc_data.empty:
-                    logging.warning(f"Skipping {ticker}: No splits found, and failed to read or empty original OHLC data from {ohlc_filepath.name}.")
-                    error_count += 1
-                    continue # Skip to next ticker if original data is bad
-
-                # Save the original, unadjusted data
-                save_adjusted_data(ticker, ohlc_data, OUTPUT_DIR)
-                processed_count += 1
+                # No splits found, use the combined data directly
+                logging.info(f"No split data found locally for {ticker}. Using combined OHLC data.")
+                adjusted_data = combined_ohlc_data # Already a copy due to concat/drop_duplicates
             else:
-                # Splits found, proceed with adjustment logic
-                # logging.info(f"Splits found for {ticker}. Proceeding to read local OHLC data.") # Reduced verbosity
-                ohlc_filepath = find_ohlc_file(ticker, INCOMING_DIR)
-                if not ohlc_filepath:
-                    # Keep this warning
-                    logging.warning(f"Skipping {ticker}: Splits found, but OHLC file not found in {INCOMING_DIR}.")
-                    error_count += 1
-                    continue
+                # Splits found, proceed with adjustment logic on combined data
+                logging.info(f"Local split data found for {ticker}. Adjusting combined OHLC data.")
+                adjusted_data = adjust_ohlc_data(combined_ohlc_data, splits)
 
-                ohlc_data = read_ohlc_data(ohlc_filepath)
-                if ohlc_data is None or ohlc_data.empty:
-                     # Keep this warning
-                    logging.warning(f"Skipping {ticker}: Splits found, but failed to read or empty OHLC data from {ohlc_filepath.name}.")
-                    error_count += 1
-                    continue
-
-                # 3. Adjust Data (We know splits exist at this point)
-                adjusted_data = adjust_ohlc_data(ohlc_data, splits)
-
-                # 4. Save Adjusted Data
-                save_adjusted_data(ticker, adjusted_data, OUTPUT_DIR)
-                processed_count += 1
+            # 4. Save Adjusted Data (combined and potentially adjusted)
+            save_adjusted_data(ticker, adjusted_data, OUTPUT_DIR)
+            processed_count += 1
+            # The logic for handling cases with splits is now integrated into the main flow
+            # before this point (adjusting 'combined_ohlc_data' if splits exist).
+            # No separate 'else' block is required here anymore.
 
         except Exception as e:
             # Keep error logging for individual ticker failures

@@ -68,33 +68,6 @@ class EodApiClient:
             logging.error(f"An unexpected error occurred during API request to {url}: {e}")
             return None
 
-    def get_exchange_tickers(self, exchange_code: str) -> List[str]:
-        """
-        Fetches the list of tickers for a given exchange code.
-
-        Args:
-            exchange_code: The code of the exchange (e.g., 'US', 'LSE', 'GSPC', 'INDX').
-
-        Returns:
-            A list of ticker symbols for the specified exchange, or an empty list on failure.
-        """
-        endpoint = f"/exchange-symbol-list/{exchange_code}"
-        response = self._make_request(endpoint)
-
-        if response and response.status_code == 200:
-            try:
-                data = response.json()
-                # Assuming the JSON structure is a list of dicts, each with a 'Code' key
-                tickers = [item['Code'] for item in data if 'Code' in item]
-                logging.info(f"Fetched {len(tickers)} tickers for exchange {exchange_code}")
-                return tickers
-            except (ValueError, KeyError, TypeError) as e:
-                logging.error(f"Failed to parse ticker list JSON for {exchange_code}: {e}")
-                return []
-        else:
-            logging.warning(f"Failed to fetch tickers for exchange {exchange_code}. Status: {response.status_code if response else 'No Response'}")
-            return []
-
     def get_eod_data(self, ticker: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
         """
         Fetches End-of-Day (EOD) OHLCV data for a specific ticker and date range.
@@ -207,11 +180,7 @@ if __name__ == '__main__':
         client = EodApiClient(config.EODHD_API_KEY)
 
         # Test fetching tickers
-        # us_tickers = client.get_exchange_tickers('US')
-        # print(f"First 10 US Tickers: {us_tickers[:10]}")
 
-        # gspc_tickers = client.get_exchange_tickers('GSPC') # Example for an index
-        # print(f"GSPC Tickers: {gspc_tickers}")
 
         # Test fetching EOD data
         # Note: Ensure the ticker format includes the exchange, e.g., AAPL.US

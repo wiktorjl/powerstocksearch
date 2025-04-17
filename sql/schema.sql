@@ -55,4 +55,13 @@ CREATE TABLE company_profile (
     weburl VARCHAR(255)
 );
 
+-- Create the splits table
+CREATE TABLE splits
+(
+    symbol_id integer NOT NULL REFERENCES symbols(symbol_id),
+    split_date timestamp with time zone NOT NULL,
+    ratio numeric NOT NULL,
+    CONSTRAINT splits_pkey PRIMARY KEY (symbol_id, split_date)
+);
+
 commit;
