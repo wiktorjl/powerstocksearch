@@ -15,6 +15,9 @@ from src.database.data_provider import (
 )
 # Import the chart generation function
 from src.visualization.ohlc_plotter import generate_and_save_chart
+# Import S/R calculation and config
+from src.feature_engineering.support_resistance import identify_support_resistance
+from src.config import AlgorithmConfig
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -154,10 +157,13 @@ def get_symbols():
 def get_symbol_details(symbol):
     """
     Returns details for a specific stock symbol, including recent OHLC data and a chart URL.
-    e.g., /symbols/AAPL
+    Accepts an optional 'theme' query parameter ('light' or 'dark').
+    e.g., /symbols/AAPL?theme=dark
     """
     logger.info(f"Received request for details for symbol: {symbol}")
     symbol_upper = symbol.upper() # Ensure symbol is uppercase
+    theme = request.args.get('theme', 'light') # Get theme, default to light
+    logger.info(f"Requested theme: {theme}")
 
     try:
         details = fetch_symbol_details_db(symbol_upper)
@@ -187,12 +193,14 @@ def get_symbol_details(symbol):
 
             # --- Fetch OHLC Data (last 90 days) ---
             ohlc_data_list = None
+            ohlc_df = None # Initialize ohlc_df
             try:
                 end_date = datetime.now()
-                start_date = end_date - timedelta(days=90)
+                # Fetch 1 year of data for S/R calculation
+                start_date_sr = end_date - timedelta(days=365)
                 ohlc_df = fetch_ohlc_data_db(
                     symbol_upper,
-                    start_date=start_date.strftime('%Y-%m-%d'),
+                    start_date=start_date_sr.strftime('%Y-%m-%d'),
                     end_date=end_date.strftime('%Y-%m-%d')
                 )
                 if ohlc_df is not None and not ohlc_df.empty:
@@ -220,11 +228,28 @@ def get_symbol_details(symbol):
                 logger.error(f"Error fetching/processing OHLC data for {symbol_upper}: {ohlc_err}")
                 # Continue without OHLC data
 
+            # --- Calculate Support/Resistance ---
+            sr_levels = []
+            if ohlc_df is not None and not ohlc_df.empty:
+                try:
+                    logger.info(f"Calculating S/R levels for {symbol_upper} using {len(ohlc_df)} data points.")
+                    config = AlgorithmConfig() # Instantiate config
+                    sr_levels = identify_support_resistance(ohlc_df, config)
+                    if sr_levels:
+                        logger.info(f"Calculated {len(sr_levels)} S/R levels for {symbol_upper}: {sr_levels}")
+                    else:
+                        logger.warning(f"S/R calculation returned no levels for {symbol_upper}.")
+                except Exception as sr_err:
+                    logger.error(f"Error calculating S/R levels for {symbol_upper}: {sr_err}")
+            else:
+                logger.warning(f"Skipping S/R calculation due to missing or empty OHLC data for {symbol_upper}.")
+            details['sr_levels'] = sr_levels # Add S/R levels to the response
+
             # --- Generate Chart (last 90 days) ---
             chart_url = None
             try:
-                # Using default days=90, timeframe='daily', plot_sr=False
-                chart_url = generate_and_save_chart(symbol=symbol_upper, days=90)
+                # Pass calculated sr_levels to the chart generator
+                chart_url = generate_and_save_chart(symbol=symbol_upper, days=90, theme=theme, sr_levels=sr_levels) # Pass theme and sr_levels
                 if chart_url:
                     logger.info(f"Chart generated successfully for {symbol_upper}: {chart_url}")
                 else:
@@ -237,6 +262,7 @@ def get_symbol_details(symbol):
             details['chart_url'] = chart_url
 
             logger.info(f"Returning combined details for {symbol_upper}")
+            logger.debug(f"Final details dictionary being returned for {symbol_upper}: {details}") # DEBUG LOG
             return jsonify(details)
         else:
             # Symbol not found in the database
@@ -287,15 +313,17 @@ def get_symbol_chart(symbol):
 def search_page():
     """
     Renders the stock search page.
-    If 'symbol' is provided in query args, fetches and displays its data,
+    If 'symbol' is provided in query args, fetches and displays its data.
+    Reads 'theme' query parameter to request the correct chart theme.
     including paginated historical prices.
     """
     symbol = request.args.get('symbol') # Check for symbol in query args
     page = request.args.get('page', 1, type=int) # Get page number for pagination
+    theme = request.args.get('theme', 'light') # Get theme for chart generation
     per_page = 10
     if page < 1: page = 1
 
-    logger.info(f"Rendering stock search page. Symbol: {symbol}, Page: {page}")
+    logger.info(f"Rendering stock search page. Symbol: {symbol}, Page: {page}, Theme: {theme}")
 
     company_data = None
     indicators_data = None
@@ -311,7 +339,7 @@ def search_page():
 
         # --- Fetch Company Details, Indicators, Chart URL (using internal API) ---
         api_base_url = request.host_url.strip('/')
-        details_url = f"{api_base_url}/symbols/{symbol_upper}"
+        details_url = f"{api_base_url}/symbols/{symbol_upper}?theme={theme}" # Pass theme to internal API
         logger.info(f"Fetching details from internal API: {details_url}")
         try:
             response = requests.get(details_url, timeout=5)
@@ -394,11 +422,13 @@ def search_symbol():
     """
     Handles the stock symbol search form submission.
     Fetches data (details, indicators, chart, historical) and re-renders the search page.
+    Reads 'theme' query parameter to request the correct chart theme.
     """
     symbol = request.form.get('symbol')
     page = 1 # Default to page 1 for POST search
     per_page = 10
-    logger.info(f"Received search POST request for symbol: {symbol}")
+    theme = request.args.get('theme', 'light') # Get theme from query args even on POST
+    logger.info(f"Received search POST request for symbol: {symbol}, Theme: {theme}")
 
     company_data = None
     indicators_data = None
@@ -415,7 +445,7 @@ def search_symbol():
 
         # --- Fetch Company Details, Indicators, Chart URL (using internal API) ---
         api_base_url = request.host_url.strip('/')
-        details_url = f"{api_base_url}/symbols/{symbol_upper}"
+        details_url = f"{api_base_url}/symbols/{symbol_upper}?theme={theme}" # Pass theme to internal API
         logger.info(f"Fetching details from internal API: {details_url}")
         try:
             response = requests.get(details_url, timeout=5)

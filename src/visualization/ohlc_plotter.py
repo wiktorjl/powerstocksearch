@@ -111,7 +111,7 @@ def process_dataframe(df, timeframe='daily'):
 
     return df_plot
 
-def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title=None, support_levels=None, resistance_levels=None):
+def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title=None, sr_levels=None, theme='light'):
     """
     Plot a professional candlestick chart using mplfinance, manually drawing pre-calculated S/R lines.
 
@@ -122,8 +122,8 @@ def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title
         output_file (str, optional): Path to save the plot image
         timeframe (str): Timeframe for the chart ('daily', 'weekly', or 'monthly')
         title (str, optional): Custom title for the plot
-        support_levels (list, optional): List of pre-calculated support levels to plot.
-        resistance_levels (list, optional): List of pre-calculated resistance levels to plot.
+        sr_levels (list, optional): List of pre-calculated support/resistance levels to plot.
+        theme (str): Color theme for the plot ('light' or 'dark').
 
     Returns:
         bool: True if plot was successfully created, False otherwise
@@ -132,25 +132,56 @@ def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title
         logger.error("No data available to plot")
         return False
 
-    # Define custom style
-    mc = mpf.make_marketcolors(
-        up='green',
-        down='red',
-        edge='black',
-        wick={'up': 'green', 'down': 'red'},
-        volume={'up': 'green', 'down': 'red'},
-    )
-
-    s = mpf.make_mpf_style(
-        marketcolors=mc,
-        gridstyle='--',
-        y_on_right=False,
-        facecolor='white',
-        edgecolor='black',
-        figcolor='white',
-        gridcolor='gray',
-        rc={'font.size': 10}
-    )
+    # Define custom styles based on theme
+    if theme == 'dark':
+        # Use light grayish colors for dark theme
+        mc = mpf.make_marketcolors(
+            up='#cccccc',       # Light gray for up candles
+            down='#999999',     # Darker gray for down candles
+            edge='#dddddd',     # Lighter gray edge
+            wick={'up': '#cccccc', 'down': '#999999'},
+            volume={'up': '#bbbbbb', 'down': '#888888'}, # Grayish volume bars
+        )
+        s = mpf.make_mpf_style(
+            marketcolors=mc,
+            gridstyle=':',
+            gridcolor='#444444', # Slightly darker grid for contrast
+            facecolor='#1c1c1c', # Keep dark background
+            edgecolor='#dddddd', # Lighter gray edge for axes
+            figcolor='#1c1c1c', # Keep dark figure background
+            rc={'font.size': 10,
+                'axes.labelcolor': '#eeeeee', # Very light gray labels
+                'axes.edgecolor': '#dddddd', # Lighter gray axis lines
+                'xtick.color': '#eeeeee', # Very light gray ticks
+                'ytick.color': '#eeeeee', # Very light gray ticks
+                'text.color': '#eeeeee',  # Very light gray text
+                'figure.facecolor': '#1c1c1c',
+                'axes.facecolor': '#1c1c1c'}
+        )
+        title_color = '#eeeeee' # Very light gray title
+        sr_support_color = '#aaaaaa'    # Medium gray for support
+        sr_resistance_color = '#777777' # Darker gray for resistance
+    else: # Default to light theme
+        mc = mpf.make_marketcolors(
+            up='green',
+            down='red',
+            edge='black',
+            wick={'up': 'green', 'down': 'red'},
+            volume={'up': 'green', 'down': 'red'},
+        )
+        s = mpf.make_mpf_style(
+            marketcolors=mc,
+            gridstyle='--',
+            y_on_right=False,
+            facecolor='white',
+            edgecolor='black',
+            figcolor='white',
+            gridcolor='gray',
+            rc={'font.size': 10}
+        )
+        title_color = 'black'
+        sr_support_color = 'green'
+        sr_resistance_color = 'red'
 
     # S/R lines will be drawn manually after the main plot
 
@@ -172,25 +203,22 @@ def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title
         )
 
         # --- Manually draw S/R lines ---
-        if (support_levels or resistance_levels) and axes and hasattr(axes[0], 'axhline'): # Check if axes exist and have axhline method
+        if sr_levels and axes and hasattr(axes[0], 'axhline'): # Check if axes exist and have axhline method
             try:
                 price_ax = axes[0] # Typically the main price panel
                 drawn_support = 0
                 drawn_resistance = 0
+                # Get the last closing price from the plotted data to determine S vs R
+                last_close = df_plot['close'].iloc[-1]
 
-                # Draw support lines (green)
-                if support_levels:
-                    for level in support_levels:
-                        if isinstance(level, (int, float)):
-                            price_ax.axhline(y=level, color='green', linestyle='--', linewidth=0.8, alpha=0.7)
+                for level in sr_levels:
+                    if isinstance(level, (int, float)):
+                        if level <= last_close: # Support
+                            price_ax.axhline(y=level, color=sr_support_color, linestyle='--', linewidth=0.8, alpha=0.7)
                             logger.debug(f"Drawing support line at {level:.2f}")
                             drawn_support += 1
-
-                # Draw resistance lines (red)
-                if resistance_levels:
-                    for level in resistance_levels:
-                         if isinstance(level, (int, float)):
-                            price_ax.axhline(y=level, color='red', linestyle=':', linewidth=0.8, alpha=0.7)
+                        else: # Resistance
+                            price_ax.axhline(y=level, color=sr_resistance_color, linestyle=':', linewidth=0.8, alpha=0.7)
                             logger.debug(f"Drawing resistance line at {level:.2f}")
                             drawn_resistance += 1
 
@@ -203,7 +231,7 @@ def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title
                  logger.error("Could not access axes[0] to draw S/R lines. Plot might be empty or structure unexpected.")
             except Exception as draw_err:
                  logger.error(f"Error manually drawing S/R lines: {draw_err}")
-        elif support_levels or resistance_levels:
+        elif sr_levels:
              logger.warning("S/R levels provided, but could not get valid axes object to draw on.")
         # --- End manual drawing ---
 
@@ -221,7 +249,7 @@ def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title
 
     # Customize title (mpf.plot handles the main title, this sets the figure suptitle)
     if title:
-        fig.suptitle(title, fontsize=14, color='black')
+        fig.suptitle(title, fontsize=14, color=title_color)
     else:
         # Generate date range string safely
         date_range_str = ""
@@ -232,7 +260,7 @@ def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title
                 date_range_str = f"({start_dt_str} to {end_dt_str})"
             except Exception as e:
                 logger.warning(f"Could not format date range for title: {e}")
-        fig.suptitle(f'{timeframe.capitalize()} Candlestick Chart for {symbol} {date_range_str}', fontsize=14, color='black')
+        fig.suptitle(f'{timeframe.capitalize()} Candlestick Chart for {symbol} {date_range_str}', fontsize=14, color=title_color)
 
     # Save to file if output_file is provided
     if output_file:
@@ -275,22 +303,23 @@ def parse_arguments():
 
     return parser.parse_args()
 
-def generate_and_save_chart(symbol, days=90, timeframe='daily', plot_sr=False):
+def generate_and_save_chart(symbol, days=90, timeframe='daily', sr_levels=None, theme='light'):
     """
-    Fetches data, generates a candlestick chart, saves it to a static location,
-    and returns the relative URL path.
+    Fetches data, generates a candlestick chart with optional S/R lines,
+    saves it to a static location, and returns the relative URL path.
 
     Args:
         symbol (str): Stock ticker symbol (uppercase).
         days (int): Number of most recent days/periods to plot.
         timeframe (str): Timeframe for the chart ('daily', 'weekly', 'monthly').
-        plot_sr (bool): Whether to calculate and plot support/resistance levels.
+        sr_levels (list, optional): Pre-calculated S/R levels to plot.
+        theme (str): Color theme for the plot ('light' or 'dark').
 
     Returns:
-        str or None: Relative URL path to the saved chart (e.g., '/static/plots/AAPL.png')
+        str or None: Relative URL path to the saved chart (e.g., '/static/plots/AAPL_light.png')
                      or None if chart generation failed.
     """
-    logger.info(f"Generating chart for {symbol} ({timeframe}, last {days} periods, S/R: {plot_sr})")
+    logger.info(f"Generating chart for {symbol} ({timeframe}, last {days} periods, S/R levels provided: {bool(sr_levels)}, Theme: {theme})")
 
     # Define output path relative to the project root
     # Assumes Flask static folder is mapped correctly
@@ -302,14 +331,14 @@ def generate_and_save_chart(symbol, days=90, timeframe='daily', plot_sr=False):
         logger.error(f"Could not create output directory '{output_dir}': {e}")
         return None
 
-    # Use a consistent filename based on the symbol
-    filename = f"{symbol}.png"
+    # Use a filename based on the symbol and theme
+    filename = f"{symbol}_{theme}.png"
     output_file = os.path.join(output_dir, filename)
     relative_url = f"/static/plots/{filename}" # URL path for Flask
 
     # Fetch data using the imported function (fetch last 'days' worth + buffer for S/R calc if needed)
-    # Fetch a bit more data initially if S/R is needed, as resampling might reduce points
-    fetch_days = days + 60 if plot_sr and timeframe != 'daily' else days + 10 # Add buffer
+    # Fetch data based on days needed for the plot
+    fetch_days = days + 10 # Add small buffer
     end_date_dt = datetime.now()
     start_date_dt = end_date_dt - timedelta(days=fetch_days * (7 if timeframe == 'weekly' else 31 if timeframe == 'monthly' else 1.5)) # Estimate start date
     start_date_str = start_date_dt.strftime('%Y-%m-%d')
@@ -343,35 +372,13 @@ def generate_and_save_chart(symbol, days=90, timeframe='daily', plot_sr=False):
         logger.error(f"No data left for {symbol} after filtering for {days} days.")
         return None
 
-    # Calculate S/R levels if requested, using ONLY the data being plotted
-    support_levels_to_plot = None
-    resistance_levels_to_plot = None
-    if plot_sr:
-        logger.info("Calculating top Support/Resistance levels on plotted data...")
-        try:
-            sr_config = AlgorithmConfig()
-            all_sr_levels = identify_support_resistance(df_plot_final.reset_index().copy(), sr_config)
-
-            if all_sr_levels:
-                current_price = df_plot_final['close'].iloc[-1]
-                max_lines_per_type = AlgorithmConfig.MAX_SR_LINES
-                support = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl <= current_price], reverse=True)
-                resistance = sorted([lvl for lvl in all_sr_levels if isinstance(lvl, (int, float)) and lvl > current_price])
-                support_levels_to_plot = support[:max_lines_per_type]
-                resistance_levels_to_plot = resistance[:max_lines_per_type]
-                logger.info(f"Identified {len(support_levels_to_plot)} support and {len(resistance_levels_to_plot)} resistance levels.")
-            else:
-                 logger.warning("Could not identify any S/R levels for the plotted period.")
-        except Exception as sr_err:
-            logger.error(f"Error calculating or filtering S/R levels: {sr_err}")
-
-
+    # S/R levels are now passed in, no calculation needed here
     # Create the plot using the final filtered data and relevant S/R levels
     # Generate a simpler title for the web view
     plot_title = f"{symbol} - Last {len(df_plot_final)} {timeframe.capitalize()} Periods"
     success = plot_candlestick(df_plot_final, symbol, output_file=output_file, timeframe=timeframe, title=plot_title,
-                               support_levels=support_levels_to_plot,
-                               resistance_levels=resistance_levels_to_plot)
+                               sr_levels=sr_levels, # Pass the combined S/R levels
+                               theme=theme) # Pass theme here
 
     if success:
         logger.info(f"Successfully generated and saved chart for {symbol} to {output_file}")

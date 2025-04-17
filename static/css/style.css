@@ -30,19 +30,47 @@
     --spacing-xxl: 2.5rem; /* 40px */
 }
 
+/* Dark Theme Variables */
+[data-theme="dark"] {
+    --primary-color: #0d6efd; /* Slightly different blue for dark */
+    --primary-hover-color: #0a58ca;
+    --secondary-color: #adb5bd; /* Lighter grey */
+    --light-grey: #212529; /* Dark background */
+    --medium-light-grey: #343a40; /* Slightly lighter dark */
+    --dark-grey: #f8f9fa; /* Light text/elements */
+    --text-color: #dee2e6; /* Light grey text */
+    --background-color: #121212; /* Very dark background */
+    --container-bg: #1c1c1c; /* Dark container */
+    --border-color: #495057; /* Darker border */
+    --shadow-color: rgba(255, 255, 255, 0.05);
+    --error-bg: #dc3545; /* Darker red */
+    --error-text: #ffffff;
+    --error-border: #b02a37;
+    --nav-bg: #1c1c1c; /* Dark nav */
+    --nav-text: #dee2e6;
+    --nav-hover-bg: #343a40;
+    --input-bg: #2c2c2c; /* Dark input background */
+    --input-text: var(--text-color); /* Use main light text color */
+    --input-border: var(--border-color);
+}
+
 /* General Styles */
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; /* Modern font stack */
-    background-color: var(--light-grey); /* Lighter background */
+    background-color: var(--background-color); /* Use variable */
     color: var(--text-color);
     margin: 0;
     padding: var(--spacing-xxl) var(--spacing-lg);
+    /* Remove padding-top to allow toggle to be at very top */
+    padding-top: 0;
+    /* Add padding-top back to main content area if needed, or adjust toggle position */
     display: flex;
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
     box-sizing: border-box;
     line-height: 1.6; /* Improved readability */
+    position: relative; /* Needed if toggle uses absolute positioning relative to body */
 }
 
 h1 {
@@ -50,6 +78,7 @@ h1 {
     margin-bottom: var(--spacing-xl);
     text-align: center;
     font-weight: 600; /* Slightly less heavy */
+    margin-top: var(--spacing-xxl); /* Add margin back since body padding-top removed */
 }
 
 a {
@@ -73,6 +102,7 @@ a:hover {
     border-radius: var(--border-radius-md);
     box-shadow: 0 2px 5px var(--shadow-color);
     box-sizing: border-box;
+    margin-top: var(--spacing-lg); /* Add some space below toggle */
 }
 
 .main-nav ul {
@@ -80,7 +110,11 @@ a:hover {
     padding: 0;
     margin: 0;
     display: flex;
-    justify-content: center;
+    justify-content: center; /* Center nav links */
+    align-items: center; /* Vertically align items */
+    position: relative; /* Needed for absolute positioning of switch */
+    align-items: center; /* Vertically align items */
+    position: relative; /* Needed for absolute positioning of switch */
 }
 
 .main-nav li {
@@ -151,7 +185,8 @@ a:hover {
     box-sizing: border-box;
     font-size: 1rem;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    background-color: var(--background-color); /* Ensure background matches */
+    background-color: var(--input-bg); /* Use input background variable */
+    color: var(--input-text); /* Use input text variable */
 }
 
 #symbol:focus {
@@ -405,10 +440,12 @@ button[type="submit"]:active {
 @media (max-width: 768px) {
     body {
         padding: var(--spacing-lg) var(--spacing-sm);
+        padding-top: 0; /* Keep top padding 0 */
     }
 
     h1 {
         font-size: 1.8rem;
+        margin-top: calc(var(--spacing-xxl) + var(--spacing-lg)); /* Adjust top margin */
     }
 
     .main-nav, .content-container, .results-table {
@@ -437,14 +474,38 @@ button[type="submit"]:active {
 }
 
 @media (max-width: 480px) {
+    /* Inherits stacking from 768px breakpoint */
+    /* Removed old .theme-switch-label rule */
     .main-nav ul {
-        flex-direction: column; /* Stack nav items */
-        align-items: center;
+        /* Rules from previous diff were likely intended here but got misplaced */
+        /* flex-direction: column; Already handled by 768px */
+        /* align-items: center; Already handled by 768px */
     }
     .main-nav li {
-        margin: var(--spacing-sm) 0;
+        margin: var(--spacing-sm) 0; /* Ensure vertical spacing */
+    }
+/* Old Theme Switch Styles Removed (Lines 481-568) */
+    .main-nav ul {
+        flex-direction: column; /* Stack nav items including switch */
+        align-items: center;
     }
 
+/* Old Theme Switch Styles Removed (Lines 561-568) */
+
+/* Adjust switch position and nav layout in smaller screens */
+@media (max-width: 768px) {
+    .main-nav ul {
+        flex-direction: column; /* Stack nav items including switch */
+        align-items: center;
+        position: static; /* Remove relative positioning */
+    }
+    .main-nav li {
+        margin: var(--spacing-sm) 0; /* Adjust vertical spacing */
+    }
+    /* Removed old .theme-switch-container rules (580-585) */
+}
+
+    /* Other 480px rules */
     button[type="submit"] {
         width: 100%; /* Full width button */
     }
@@ -462,4 +523,85 @@ button[type="submit"]:active {
     .results-table td {
         padding: var(--spacing-xs);
     }
+}
+
+/* Detached Theme Toggle */
+.theme-toggle-container {
+    position: fixed; /* Keep in viewport corner */
+    top: var(--spacing-md, 1rem); /* Use variable with fallback */
+    right: var(--spacing-md, 1rem);
+    z-index: 1001; /* Above other elements like autocomplete */
+}
+
+.theme-toggle {
+    position: relative;
+    display: inline-block;
+    width: 30px; /* Adjust size as needed */
+    height: 30px;
+    cursor: pointer;
+    /* Add some visual separation if needed */
+    /* background-color: rgba(128, 128, 128, 0.1); */
+    /* border-radius: 50%; */
+    /* padding: 4px; */
+}
+
+/* Hide the actual checkbox */
+.theme-toggle input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none; /* Prevent interaction */
+}
+
+.theme-toggle .icon {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px; /* Adjust icon size */
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    line-height: 1; /* Ensure icon is centered vertically */
+}
+
+.theme-toggle .icon.sun::before {
+    content: '☀️'; /* Unicode sun */
+    color: #f39c12; /* Yellowish */
+}
+
+.theme-toggle .icon.moon::before {
+    content: '🌙'; /* Unicode moon */
+    color: #f1c40f; /* Lighter yellow/gold */
+}
+
+/* Light mode default: show sun, hide moon */
+.theme-toggle .icon.sun {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+}
+.theme-toggle .icon.moon {
+    opacity: 0;
+    transform: scale(0) rotate(360deg);
+}
+
+/* Dark mode (checkbox checked): hide sun, show moon */
+.theme-toggle input:checked ~ .icon.sun {
+    opacity: 0;
+    transform: scale(0) rotate(360deg);
+}
+.theme-toggle input:checked ~ .icon.moon {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+}
+
+/* Optional: Adjust icon color in dark theme */
+[data-theme="dark"] .theme-toggle .icon.sun::before {
+     color: #f1c40f; /* Match moon color or choose another */
+}
+[data-theme="dark"] .theme-toggle .icon.moon::before {
+     color: #f1c40f; /* Keep or adjust */
 }

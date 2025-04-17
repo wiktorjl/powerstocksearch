@@ -8,12 +8,22 @@
     {# Removed inline styles - rely on static/css/style.css #}
 </head>
 <body>
+    <!-- Detached Theme Toggle -->
+    <div class="theme-toggle-container">
+        <label class="theme-toggle" for="theme-checkbox">
+            <input type="checkbox" id="theme-checkbox" />
+            <span class="icon sun"></span> <!-- Sun icon -->
+            <span class="icon moon"></span> <!-- Moon icon -->
+        </label>
+    </div>
     <nav class="main-nav">
         <ul>
             <li><a href="{{ url_for('search_page') }}" {% if active_page == 'search' %}class="active"{% endif %}>Search</a></li>
             <li><a href="{{ url_for('scan_page') }}" {% if active_page == 'scan' %}class="active"{% endif %}>Scan</a></li>
+            {# Theme switch removed from nav #}
         </ul>
     </nav>
+
 
 
     <h1>Stock Scanner</h1>
@@ -142,13 +152,96 @@
                 tableBody.addEventListener('click', function(event) {
                     const row = event.target.closest('tr');
                     if (row && row.dataset.symbol) {
+
+
+
                         const symbol = row.dataset.symbol;
-                        // Redirect to the search page with the symbol as a query parameter
-                        window.location.href = `/search?symbol=${encodeURIComponent(symbol)}`;
+                        const currentTheme = localStorage.getItem('theme') || 'light';
+                        // Redirect to the search page with the symbol and theme as query parameters
+                        window.location.href = `/search?symbol=${encodeURIComponent(symbol)}&theme=${currentTheme}`;
                     }
                 });
             }
-        });
+            // End of if(tableBody) block
+
+            // --- Theme Switch Logic ---
+            const themeCheckbox = document.getElementById('theme-checkbox');
+            const currentTheme = localStorage.getItem('theme') ? localStorage.getItem('theme') : null;
+            const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
+            function setTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+                if (theme === 'dark') {
+                    themeCheckbox.checked = true;
+                } else {
+                    themeCheckbox.checked = false;
+                }
+                // No chart to update on this page, but keep structure consistent
+                // If charts were added here later, update logic would go here.
+                console.log(`Theme set to ${theme} on scan page.`);
+            }
+
+            // Initialize theme based on localStorage or system preference
+            if (currentTheme) {
+                setTheme(currentTheme);
+            } else if (prefersDarkScheme.matches) {
+                setTheme('dark');
+            } else {
+                setTheme('light'); // Default to light
+            }
+
+            // Listener for theme switch toggle
+            themeCheckbox.addEventListener('change', function() {
+                const newTheme = this.checked ? 'dark' : 'light';
+                setTheme(newTheme);
+            });
+
+            // Listener for changes in system preference
+            prefersDarkScheme.addListener(e => {
+                // Only change if no theme is explicitly set in localStorage
+                if (!localStorage.getItem('theme')) {
+                     if (e.matches) {
+                        setTheme('dark');
+                    } else {
+                        setTheme('light');
+                    }
+                }
+            });
+            // --- End Theme Switch Logic ---
+
+            // --- End Theme Switch Logic ---
+
+            // Add theme parameter to filter form submission
+            const filterForm = document.querySelector('.filter-form');
+            if (filterForm) {
+                filterForm.addEventListener('submit', function(e) {
+                    // Prevent default if we modify the action
+                    e.preventDefault();
+                    const currentTheme = localStorage.getItem('theme') || 'light';
+                    const actionUrl = new URL(filterForm.action);
+                    actionUrl.searchParams.set('theme', currentTheme);
+                    filterForm.action = actionUrl.toString();
+                    // Now submit the form programmatically
+                    filterForm.submit();
+                });
+            }
+
+            // Add theme parameter to pagination links
+            function updatePaginationLinks() {
+                const currentTheme = localStorage.getItem('theme') || 'light';
+                const paginationLinks = document.querySelectorAll('.pagination a.pagination-link');
+                paginationLinks.forEach(link => {
+                    const linkUrl = new URL(link.href);
+                    linkUrl.searchParams.set('theme', currentTheme);
+                    link.href = linkUrl.toString();
+                });
+            }
+
+            // Update links on initial load
+            updatePaginationLinks();
+
+        }); // End of DOMContentLoaded listener
     </script>
 
     <footer>

@@ -8,12 +8,22 @@
     <!-- Styles moved to static/css/style.css -->
 </head>
 <body>
+    <!-- Detached Theme Toggle -->
+    <div class="theme-toggle-container">
+        <label class="theme-toggle" for="theme-checkbox">
+            <input type="checkbox" id="theme-checkbox" />
+            <span class="icon sun"></span> <!-- Sun icon -->
+            <span class="icon moon"></span> <!-- Moon icon -->
+        </label>
+    </div>
     <nav class="main-nav">
         <ul>
             <li><a href="{{ url_for('search_page') }}" {% if active_page == 'search' %}class="active"{% endif %}>Search</a></li>
             <li><a href="{{ url_for('scan_page') }}" {% if active_page == 'scan' %}class="active"{% endif %}>Scan</a></li>
+            {# Theme switch removed from nav #}
         </ul>
     </nav>
+
 
 
     <!-- Removed redundant H1 title -->
@@ -64,6 +74,7 @@
             <p><strong>Last Timestamp:</strong> {{ company_data.get('latest_timestamp') | date }}</p>
             <p><strong>Close:</strong> {{ company_data.get('latest_close') | currency }} | <strong>Open:</strong> {{ company_data.get('latest_open') | currency }} | <strong>High:</strong> {{ company_data.get('latest_high') | currency }} | <strong>Low:</strong> {{ company_data.get('latest_low') | currency }}</p>
             <p><strong>Volume:</strong> {{ company_data.get('latest_volume') | large_number }}</p>
+            {# S/R Levels are now plotted directly on the chart #}
             <hr class="section-divider"> {# Added visual separator #}
             {# Display Indicators if available #}
             {% if indicators %}
@@ -192,7 +203,10 @@
                         suggestionDiv.dataset.symbol = item; // Store the symbol
 
                         suggestionDiv.addEventListener('click', function() {
-                            symbolInput.value = this.dataset.symbol; // Use stored symbol
+                            const selectedSymbol = this.dataset.symbol;
+                            const currentTheme = localStorage.getItem('theme') || 'light';
+                            // Navigate to search page with symbol and theme
+                            window.location.href = `/search?symbol=${encodeURIComponent(selectedSymbol)}&theme=${currentTheme}`;
                             closeAllLists();
                         });
                         autocompleteList.appendChild(suggestionDiv);
@@ -222,6 +236,7 @@
                     if (suggestions[currentFocus]) suggestions[currentFocus].click();
                 } else {
                     // If Enter is pressed without selecting a suggestion, submit the form
+                     // Submit form, ensuring theme is included (handled by form submit listener)
                      document.getElementById('search-form').submit();
                 }
                  closeAllLists();
@@ -262,6 +277,65 @@
              }
         }
 
+
+
+        // Theme Switch Logic
+        const themeCheckbox = document.getElementById('theme-checkbox');
+        const currentTheme = localStorage.getItem('theme') ? localStorage.getItem('theme') : null;
+        const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            if (theme === 'dark') {
+                themeCheckbox.checked = true;
+            } else {
+                themeCheckbox.checked = false;
+            }
+            // Update the chart image source if it exists
+            const chartImage = document.querySelector('.stock-chart-image');
+            if (chartImage && chartImage.src) {
+                try {
+                    const chartUrl = new URL(chartImage.src, window.location.origin); // Ensure base URL is correct
+                    chartUrl.searchParams.set('theme', theme); // Update theme param in existing URL
+                    chartImage.src = chartUrl.toString();
+                    console.log("Updated chart src to:", chartImage.src);
+                } catch (e) {
+                    console.error("Error updating chart URL:", e);
+                    // Potentially reload if updating src fails? Or just log.
+                    // For now, just log the error. A full reload might be needed
+                    // if the original chart_url from Flask didn't include the base.
+                }
+            }
+        }
+
+        // Initialize theme based on localStorage or system preference
+        if (currentTheme) {
+            setTheme(currentTheme);
+        } else if (prefersDarkScheme.matches) {
+            setTheme('dark');
+        } else {
+            setTheme('light'); // Default to light
+        }
+
+        // Listener for theme switch toggle
+        themeCheckbox.addEventListener('change', function() {
+            const newTheme = this.checked ? 'dark' : 'light';
+            setTheme(newTheme);
+        });
+
+        // Listener for changes in system preference
+        prefersDarkScheme.addListener(e => {
+            // Only change if no theme is explicitly set in localStorage
+            if (!localStorage.getItem('theme')) {
+                 if (e.matches) {
+                    setTheme('dark');
+                } else {
+                    setTheme('light');
+                }
+            }
+        });
+
         // Close the list if user clicks outside
         document.addEventListener('click', function (e) {
             // Check if the click target is outside the input and the suggestions list
@@ -269,6 +343,35 @@
                  closeAllLists();
             }
         });
+
+        // Add theme parameter to form submission
+        const searchForm = document.getElementById('search-form');
+        if (searchForm) {
+            searchForm.addEventListener('submit', function(e) {
+                // Prevent default if we modify the action
+                e.preventDefault();
+                const currentTheme = localStorage.getItem('theme') || 'light';
+                const actionUrl = new URL(searchForm.action);
+                actionUrl.searchParams.set('theme', currentTheme);
+                searchForm.action = actionUrl.toString();
+                // Now submit the form programmatically
+                searchForm.submit();
+            });
+        }
+
+        // Add theme parameter to pagination links
+        function updatePaginationLinks() {
+            const currentTheme = localStorage.getItem('theme') || 'light';
+            const paginationLinks = document.querySelectorAll('.pagination a.pagination-link');
+            paginationLinks.forEach(link => {
+                const linkUrl = new URL(link.href);
+                linkUrl.searchParams.set('theme', currentTheme);
+                link.href = linkUrl.toString();
+            });
+        }
+
+        // Update links on initial load
+        updatePaginationLinks();
 
     </script>
 

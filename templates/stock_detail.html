@@ -8,6 +8,14 @@
     <!-- Inline styles removed, relying on static/css/style.css -->
 </head>
 <body>
+    <!-- Detached Theme Toggle -->
+    <div class="theme-toggle-container">
+        <label class="theme-toggle" for="theme-checkbox">
+            <input type="checkbox" id="theme-checkbox" />
+            <span class="icon sun"></span> <!-- Sun icon -->
+            <span class="icon moon"></span> <!-- Moon icon -->
+        </label>
+    </div>
     <nav class="main-nav">
         <ul>
             <li><a href="{{ url_for('search_page') }}">Search</a></li>
