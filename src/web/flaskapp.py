@@ -1,6 +1,6 @@
 import logging
 # Consolidate Flask imports
-from flask import Flask, jsonify, request, render_template, flash
+from flask import Flask, jsonify, request, render_template, flash, session
 import requests
 import math
 from datetime import datetime, timedelta
@@ -18,6 +18,8 @@ from src.visualization.ohlc_plotter import generate_and_save_chart
 # Import S/R calculation and config
 from src.feature_engineering.support_resistance import identify_support_resistance
 from src.config import AlgorithmConfig
+from src.services.openai_service import get_company_summary, get_economic_variables, get_economic_analysis # Import the new services
+from src.analysis.economic_influence_analyzer import EconomicInfluenceAnalyzer # Import the analyzer
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -162,8 +164,11 @@ def get_symbol_details(symbol):
     """
     logger.info(f"Received request for details for symbol: {symbol}")
     symbol_upper = symbol.upper() # Ensure symbol is uppercase
-    theme = request.args.get('theme', 'light') # Get theme, default to light
-    logger.info(f"Requested theme: {theme}")
+    # Prioritize theme from session, then request args, then default
+    session_theme = session.get('theme')
+    request_theme = request.args.get('theme')
+    theme = session_theme or request_theme or 'light'
+    logger.info(f"[/symbols/{symbol_upper}] Theme check: Session='{session_theme}', Request='{request_theme}', Final='{theme}'")
 
     try:
         details = fetch_symbol_details_db(symbol_upper)
@@ -249,11 +254,13 @@ def get_symbol_details(symbol):
             chart_url = None
             try:
                 # Pass calculated sr_levels to the chart generator
+                # The 'theme' variable now prioritizes session, then request args
+                logger.info(f"Calling generate_and_save_chart for {symbol_upper} with theme: '{theme}' (Source: {'session' if 'theme' in session else 'request/default'})") # Log theme being passed and its source
                 chart_url = generate_and_save_chart(symbol=symbol_upper, days=90, theme=theme, sr_levels=sr_levels) # Pass theme and sr_levels
                 if chart_url:
-                    logger.info(f"Chart generated successfully for {symbol_upper}: {chart_url}")
+                    logger.info(f"Chart generated successfully for {symbol_upper}: {chart_url}") # Log the returned URL
                 else:
-                    logger.warning(f"Chart generation failed for {symbol_upper}")
+                    logger.warning(f"Chart generation failed for {symbol_upper}, generate_and_save_chart returned None") # Log failure
             except Exception as chart_err:
                 logger.error(f"Error generating chart for {symbol_upper}: {chart_err}")
                 # Continue without chart URL
@@ -319,11 +326,12 @@ def search_page():
     """
     symbol = request.args.get('symbol') # Check for symbol in query args
     page = request.args.get('page', 1, type=int) # Get page number for pagination
-    theme = request.args.get('theme', 'light') # Get theme for chart generation
+    # Prioritize theme from session, then request args, then default
+    theme = session.get('theme', request.args.get('theme', 'light'))
     per_page = 10
     if page < 1: page = 1
 
-    logger.info(f"Rendering stock search page. Symbol: {symbol}, Page: {page}, Theme: {theme}")
+    logger.info(f"Rendering stock search page. Symbol: {symbol}, Page: {page}, Theme: {theme} (Source: {'session' if 'theme' in session else 'request/default'})")
 
     company_data = None
     indicators_data = None
@@ -332,6 +340,10 @@ def search_page():
     pagination = None      # Added for pagination
     error = None
     search_term = symbol # Use symbol from args as the search term
+    company_summary = None # Initialize company summary
+    economic_variables = None # Initialize economic variables
+    economic_analysis = None # Initialize economic analysis
+    economic_influences = None # Initialize economic influences
 
     if symbol:
         symbol_upper = symbol.upper()
@@ -339,7 +351,8 @@ def search_page():
 
         # --- Fetch Company Details, Indicators, Chart URL (using internal API) ---
         api_base_url = request.host_url.strip('/')
-        details_url = f"{api_base_url}/symbols/{symbol_upper}?theme={theme}" # Pass theme to internal API
+        # Internal API call still needs theme, but it's now reliably sourced
+        details_url = f"{api_base_url}/symbols/{symbol_upper}?theme={theme}"
         logger.info(f"Fetching details from internal API: {details_url}")
         try:
             response = requests.get(details_url, timeout=5)
@@ -368,6 +381,88 @@ def search_page():
             error = "An unexpected error occurred fetching details."
             logger.exception(f"Unexpected error fetching details for {symbol_upper}: {e}")
             # Continue, but historical might fail or be empty
+
+        # --- Fetch Company Summary (if details were fetched) ---
+        if company_data and company_data.get('name'):
+            try:
+                logger.info(f"Fetching company summary for: {company_data['name']}")
+                company_summary = get_company_summary(company_data['name'])
+                if company_summary:
+                    logger.info(f"Successfully fetched company summary for {company_data['name']}")
+                else:
+                    logger.warning(f"Could not fetch company summary for {company_data['name']}")
+            except Exception as summary_err:
+                logger.error(f"Error fetching company summary for {company_data['name']}: {summary_err}")
+                # Continue without summary, don't overwrite primary error
+            # --- Fetch Economic Variables ---
+            try:
+                logger.info(f"Fetching economic variables for: {company_data['name']} ({symbol_upper})")
+                economic_variables = get_economic_variables(company_data['name'], symbol_upper)
+                if economic_variables:
+                    logger.info(f"Successfully fetched {len(economic_variables)} economic variables for {symbol_upper}")
+                else:
+                    logger.warning(f"Could not fetch economic variables for {symbol_upper}")
+            except Exception as econ_err:
+                logger.error(f"Error fetching economic variables for {symbol_upper}: {econ_err}")
+                # Continue without variables, don't overwrite primary error
+            # --- Fetch Economic Analysis ---
+            try:
+                logger.info(f"Fetching economic analysis for: {company_data['name']} ({symbol_upper})")
+                economic_analysis = get_economic_analysis(
+                    company_name=company_data.get('name'),
+                    symbol=symbol_upper,
+                    sector=company_data.get('sector'),
+                    industry=company_data.get('finnhub_industry')
+                )
+                if economic_analysis:
+                    logger.info(f"Successfully fetched economic analysis for {symbol_upper}")
+                else:
+                    logger.warning(f"Could not fetch economic analysis for {symbol_upper}")
+            except Exception as econ_an_err:
+                logger.error(f"Error fetching economic analysis for {symbol_upper}: {econ_an_err}")
+                # Continue without analysis
+
+            # --- Analyze Economic Influences ---
+            try:
+                logger.info(f"Analyzing economic influences for: {symbol_upper}")
+                analyzer = EconomicInfluenceAnalyzer()
+                # TODO: Pass actual economic_data if available/needed
+                economic_influences = analyzer.AnalyzeEconomicInfluences(symbol_upper)
+                if economic_influences:
+                    logger.info(f"Successfully analyzed economic influences for {symbol_upper}")
+                else:
+                    logger.warning(f"Economic influence analysis returned None for {symbol_upper}")
+            except Exception as influence_err:
+                logger.error(f"Error analyzing economic influences for {symbol_upper}: {influence_err}")
+                # Continue without influences
+
+        # --- Calculate 90-Day Trend ---
+        trend = None
+        try:
+            # Fetch last 90 days specifically for trend calculation
+            end_date_trend = datetime.now()
+            start_date_trend = end_date_trend - timedelta(days=90)
+            ohlc_df_trend = fetch_ohlc_data_db(
+                symbol_upper,
+                start_date=start_date_trend.strftime('%Y-%m-%d'),
+                end_date=end_date_trend.strftime('%Y-%m-%d')
+            )
+            if ohlc_df_trend is not None and not ohlc_df_trend.empty and len(ohlc_df_trend) > 1:
+                # Ensure data is sorted by date if not already guaranteed by fetch_ohlc_data_db
+                ohlc_df_trend = ohlc_df_trend.sort_values(by='timestamp')
+                first_close = ohlc_df_trend.iloc[0]['close']
+                last_close = ohlc_df_trend.iloc[-1]['close']
+                if last_close > first_close:
+                    trend = 'up'
+                elif last_close < first_close:
+                    trend = 'down'
+                else:
+                    trend = 'flat'
+                logger.info(f"Calculated 90-day trend for {symbol_upper}: {trend} (Start: {first_close}, End: {last_close})")
+            else:
+                logger.warning(f"Could not calculate trend for {symbol_upper} due to insufficient data (found {len(ohlc_df_trend) if ohlc_df_trend is not None else 'None'} points).")
+        except Exception as trend_err:
+            logger.error(f"Error calculating trend for {symbol_upper}: {trend_err}")
 
         # --- Fetch and Paginate Historical Data (only if company_data was found or no fatal API error) ---
         if company_data or not error: # Proceed if we have company data or the error wasn't fatal
@@ -413,6 +508,11 @@ def search_page():
         pagination=pagination,          # Pass pagination object
         error=error,
         search_term=search_term, # Pass symbol to prefill search box
+        company_summary=company_summary, # Pass company summary
+        economic_variables=economic_variables, # Pass economic variables
+        economic_analysis=economic_analysis, # Pass economic analysis
+        economic_influences=economic_influences, # Pass economic influences
+        trend=trend, # Pass calculated trend
         active_page='search' # Indicate current page
     )
 
@@ -422,12 +522,16 @@ def search_symbol():
     """
     Handles the stock symbol search form submission.
     Fetches data (details, indicators, chart, historical) and re-renders the search page.
-    Reads 'theme' query parameter to request the correct chart theme.
+    Reads 'theme' form parameter to request the correct chart theme.
     """
     symbol = request.form.get('symbol')
     page = 1 # Default to page 1 for POST search
     per_page = 10
-    theme = request.args.get('theme', 'light') # Get theme from query args even on POST
+    # For POST search, prioritize theme from the submitted form, then session, then default
+    form_theme_post = request.form.get('theme') # Read from hidden input
+    session_theme_post = session.get('theme')
+    theme = form_theme_post or session_theme_post or 'light'
+    logger.info(f"[/search POST] Theme check: Form='{form_theme_post}', Session='{session_theme_post}', Final='{theme}'")
     logger.info(f"Received search POST request for symbol: {symbol}, Theme: {theme}")
 
     company_data = None
@@ -436,6 +540,10 @@ def search_symbol():
     historical_data = None
     pagination = None
     error = None
+    company_summary = None # Initialize company summary
+    economic_variables = None # Initialize economic variables
+    economic_analysis = None # Initialize economic analysis
+    economic_influences = None # Initialize economic influences
 
     if not symbol:
         error = "Please enter a stock symbol."
@@ -445,7 +553,8 @@ def search_symbol():
 
         # --- Fetch Company Details, Indicators, Chart URL (using internal API) ---
         api_base_url = request.host_url.strip('/')
-        details_url = f"{api_base_url}/symbols/{symbol_upper}?theme={theme}" # Pass theme to internal API
+        # Internal API call still needs theme, but it's now reliably sourced
+        details_url = f"{api_base_url}/symbols/{symbol_upper}?theme={theme}"
         logger.info(f"Fetching details from internal API: {details_url}")
         try:
             response = requests.get(details_url, timeout=5)
@@ -471,6 +580,87 @@ def search_symbol():
         except Exception as e:
             error = "An unexpected error occurred fetching details."
             logger.exception(f"Unexpected error fetching details for {symbol_upper}: {e}")
+
+        # --- Fetch Company Summary (if details were fetched) ---
+        if company_data and company_data.get('name'):
+            try:
+                logger.info(f"Fetching company summary for: {company_data['name']}")
+                company_summary = get_company_summary(company_data['name'])
+                if company_summary:
+                    logger.info(f"Successfully fetched company summary for {company_data['name']}")
+                else:
+                    logger.warning(f"Could not fetch company summary for {company_data['name']}")
+            except Exception as summary_err:
+                logger.error(f"Error fetching company summary for {company_data['name']}: {summary_err}")
+                # Continue without summary, don't overwrite primary error
+            # --- Fetch Economic Variables ---
+            try:
+                logger.info(f"Fetching economic variables for: {company_data['name']} ({symbol_upper})")
+                economic_variables = get_economic_variables(company_data['name'], symbol_upper)
+                if economic_variables:
+                    logger.info(f"Successfully fetched {len(economic_variables)} economic variables for {symbol_upper}")
+                else:
+                    logger.warning(f"Could not fetch economic variables for {symbol_upper}")
+            except Exception as econ_err:
+                logger.error(f"Error fetching economic variables for {symbol_upper}: {econ_err}")
+                # Continue without variables, don't overwrite primary error
+            # --- Fetch Economic Analysis ---
+            try:
+                logger.info(f"Fetching economic analysis for: {company_data['name']} ({symbol_upper})")
+                economic_analysis = get_economic_analysis(
+                    company_name=company_data.get('name'),
+                    symbol=symbol_upper,
+                    sector=company_data.get('sector'),
+                    industry=company_data.get('finnhub_industry')
+                )
+                if economic_analysis:
+                    logger.info(f"Successfully fetched economic analysis for {symbol_upper}")
+                else:
+                    logger.warning(f"Could not fetch economic analysis for {symbol_upper}")
+            except Exception as econ_an_err:
+                logger.error(f"Error fetching economic analysis for {symbol_upper}: {econ_an_err}")
+                # Continue without analysis
+
+            # --- Analyze Economic Influences ---
+            try:
+                logger.info(f"Analyzing economic influences for: {symbol_upper}")
+                analyzer = EconomicInfluenceAnalyzer()
+                # TODO: Pass actual economic_data if available/needed
+                economic_influences = analyzer.AnalyzeEconomicInfluences(symbol_upper)
+                if economic_influences:
+                    logger.info(f"Successfully analyzed economic influences for {symbol_upper}")
+                else:
+                    logger.warning(f"Economic influence analysis returned None for {symbol_upper}")
+            except Exception as influence_err:
+                logger.error(f"Error analyzing economic influences for {symbol_upper}: {influence_err}")
+                # Continue without influences
+        # --- Calculate 90-Day Trend ---
+        trend = None
+        try:
+            # Fetch last 90 days specifically for trend calculation
+            end_date_trend = datetime.now()
+            start_date_trend = end_date_trend - timedelta(days=90)
+            ohlc_df_trend = fetch_ohlc_data_db(
+                symbol_upper,
+                start_date=start_date_trend.strftime('%Y-%m-%d'),
+                end_date=end_date_trend.strftime('%Y-%m-%d')
+            )
+            if ohlc_df_trend is not None and not ohlc_df_trend.empty and len(ohlc_df_trend) > 1:
+                 # Ensure data is sorted by date if not already guaranteed by fetch_ohlc_data_db
+                ohlc_df_trend = ohlc_df_trend.sort_values(by='timestamp')
+                first_close = ohlc_df_trend.iloc[0]['close']
+                last_close = ohlc_df_trend.iloc[-1]['close']
+                if last_close > first_close:
+                    trend = 'up'
+                elif last_close < first_close:
+                    trend = 'down'
+                else:
+                    trend = 'flat'
+                logger.info(f"Calculated 90-day trend for {symbol_upper}: {trend} (Start: {first_close}, End: {last_close})")
+            else:
+                logger.warning(f"Could not calculate trend for {symbol_upper} due to insufficient data (found {len(ohlc_df_trend) if ohlc_df_trend is not None else 'None'} points).")
+        except Exception as trend_err:
+            logger.error(f"Error calculating trend for {symbol_upper}: {trend_err}")
 
         # --- Fetch and Paginate Historical Data (only if company_data was found or no fatal API error) ---
         if company_data or not error:
@@ -516,6 +706,11 @@ def search_symbol():
         pagination=pagination,
         error=error,
         search_term=symbol_upper if symbol else None, # Pass uppercase symbol back
+        company_summary=company_summary, # Pass company summary
+        economic_variables=economic_variables, # Pass economic variables
+        economic_analysis=economic_analysis, # Pass economic analysis
+        economic_influences=economic_influences, # Pass economic influences
+        trend=trend, # Pass calculated trend
         active_page='search' # Indicate current page
     )
 
@@ -658,9 +853,24 @@ def scan_page():
         form_data=form_data, # Pass current filters back to form
         active_page='scan' # Indicate current page
     )
-
 # Removed the stock_detail_page route as historical data is now shown on the search page
+
+@app.route('/set_theme', methods=['POST'])
+def set_theme():
+    """ Stores the selected theme ('light' or 'dark') in the session. """
+    data = request.get_json()
+    theme = data.get('theme')
+    if theme in ['light', 'dark']:
+        session['theme'] = theme
+        session.modified = True # Explicitly mark session as modified
+        logger.info(f"Theme set in session: {theme}")
+        return jsonify({"success": True, "theme": theme}), 200
+    else:
+        logger.warning(f"Invalid theme value received: {theme}")
+        return jsonify({"error": "Invalid theme value"}), 400
+
 
 if __name__ == '__main__':
     # Use 0.0.0.0 to make it accessible on the network
+    app.run(host='0.0.0.0', port=5000, debug=True)
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -49,8 +49,21 @@
                 </dl>
             </div>
 
-            <hr>
 
+            {# Removed HR - spacing handled by CSS margin on .company-details dl #}
+
+            <h3>Economic Conditions Analysis</h3>
+            <div class="economic-analysis">
+                {% if economic_analysis %}
+                    <p>{{ economic_analysis }}</p>
+                {% else %}
+                    <p>Economic analysis is not available for this stock.</p>
+                {% endif %}
+            </div>
+
+            {# Removed HR - spacing handled by CSS margin on .economic-analysis #}
+
+            <div class="historical-data-block"> {# Wrapper for historical data #}
             <h3>Historical Prices (Split-Adjusted)</h3>
             {% if historical_data %}
                 <table class="results-table"> {# Added class for styling #}
@@ -99,6 +112,7 @@
             {% else %}
                 <p>No historical price data available for this stock.</p>
             {% endif %}
+            </div> {# End historical-data-block #}
 
         {% elif not error %}
              <p>Stock symbol not found or data could not be loaded.</p>

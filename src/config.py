@@ -12,6 +12,7 @@ EODHD_API_KEY: Optional[str] = os.getenv("EODHD_API_KEY")
 
 FINNHUB_API_KEY: Optional[str] = os.getenv("FINNHUB_API_KEY")
 
+OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
 # Retrieve Database connection details
 DB_NAME: Optional[str] = os.getenv("DB_NAME")
 DB_USER: Optional[str] = os.getenv("DB_USER")
@@ -36,6 +37,11 @@ if not FINNHUB_API_KEY:
     print("Warning: FINNHUB_API_KEY not found in .env file. Finnhub features will be unavailable.")
     # Depending on requirements, you might want to raise an error or exit
     # raise ValueError("FINNHUB_API_KEY not found in .env file.")
+
+if not OPENAI_API_KEY:
+    print("Warning: OPENAI_API_KEY not found in .env file. Company descriptions will be unavailable.")
+    # Depending on requirements, you might want to raise an error or exit
+    # raise ValueError("OPENAI_API_KEY not found in .env file.")
 
 
 

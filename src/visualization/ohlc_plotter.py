@@ -132,66 +132,57 @@ def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title
         logger.error("No data available to plot")
         return False
 
+    plt.clf() # Clear the current figure before plotting
+
+    # Log the theme received by plot_candlestick
+    logger.info(f"plot_candlestick received theme: '{theme}'")
     # Define custom styles based on theme
     if theme == 'dark':
-        # Use light grayish colors for dark theme
-        mc = mpf.make_marketcolors(
-            up='#cccccc',       # Light gray for up candles
-            down='#999999',     # Darker gray for down candles
-            edge='#dddddd',     # Lighter gray edge
-            wick={'up': '#cccccc', 'down': '#999999'},
-            volume={'up': '#bbbbbb', 'down': '#888888'}, # Grayish volume bars
-        )
-        s = mpf.make_mpf_style(
-            marketcolors=mc,
-            gridstyle=':',
-            gridcolor='#444444', # Slightly darker grid for contrast
-            facecolor='#1c1c1c', # Keep dark background
-            edgecolor='#dddddd', # Lighter gray edge for axes
-            figcolor='#1c1c1c', # Keep dark figure background
-            rc={'font.size': 10,
-                'axes.labelcolor': '#eeeeee', # Very light gray labels
-                'axes.edgecolor': '#dddddd', # Lighter gray axis lines
-                'xtick.color': '#eeeeee', # Very light gray ticks
-                'ytick.color': '#eeeeee', # Very light gray ticks
-                'text.color': '#eeeeee',  # Very light gray text
-                'figure.facecolor': '#1c1c1c',
-                'axes.facecolor': '#1c1c1c'}
-        )
-        title_color = '#eeeeee' # Very light gray title
-        sr_support_color = '#aaaaaa'    # Medium gray for support
-        sr_resistance_color = '#777777' # Darker gray for resistance
-    else: # Default to light theme
-        mc = mpf.make_marketcolors(
-            up='green',
-            down='red',
-            edge='black',
-            wick={'up': 'green', 'down': 'red'},
-            volume={'up': 'green', 'down': 'red'},
-        )
-        s = mpf.make_mpf_style(
-            marketcolors=mc,
-            gridstyle='--',
-            y_on_right=False,
-            facecolor='white',
-            edgecolor='black',
-            figcolor='white',
-            gridcolor='gray',
-            rc={'font.size': 10}
-        )
-        title_color = 'black'
-        sr_support_color = 'green'
-        sr_resistance_color = 'red'
+        s_dark = 'nightclouds' # Use built-in dark style string
+        title_color_dark = '#eeeeee'
+        sr_support_color_dark = '#aaaaaa'
+        sr_resistance_color_dark = '#777777'
+    # Define light theme style dictionary
+    mc_light = mpf.make_marketcolors(
+        up='green', down='red', edge='black',
+        wick={'up': 'green', 'down': 'red'},
+        volume={'up': 'green', 'down': 'red'},
+    )
+    s_light = mpf.make_mpf_style(
+        marketcolors=mc_light, gridstyle='--', y_on_right=False,
+        facecolor='white', edgecolor='black', figcolor='white', gridcolor='gray',
+        rc={'font.size': 10}
+    )
+    title_color_light = 'black'
+    sr_support_color_light = 'green'
+    sr_resistance_color_light = 'red'
+
+    # Choose the style and colors based on the validated theme
+    if theme == 'dark':
+        chosen_style = s_dark
+        title_color = title_color_dark
+        sr_support_color = sr_support_color_dark
+        sr_resistance_color = sr_resistance_color_dark
+    else: # Default to light
+        chosen_style = s_light
+        title_color = title_color_light
+        sr_support_color = sr_support_color_light
+        sr_resistance_color = sr_resistance_color_light
 
     # S/R lines will be drawn manually after the main plot
 
     # Create figure and primary axis
+    # Use plt.style.context to apply the chosen style
+    fig = None # Initialize fig
     try:
-        # Plot without hlines initially
+        # Log the style being passed
+        logger.info(f"Plotting {symbol} with style: {chosen_style}")
+
+        # Plot without hlines initially, passing style directly
         fig, axes = mpf.plot(
             df_plot,
             type='candle',
-            style=s,
+            style=chosen_style, # Pass the chosen style dictionary or string
             title=title or f'{timeframe.capitalize()} Candlestick Chart for {symbol}',
             ylabel='Price',
             volume=True if 'volume' in df_plot.columns else False,
@@ -202,84 +193,74 @@ def plot_candlestick(df_plot, symbol, output_file=None, timeframe='daily', title
             # No hlines argument here
         )
 
-        # --- Manually draw S/R lines ---
-        if sr_levels and axes and hasattr(axes[0], 'axhline'): # Check if axes exist and have axhline method
+        # --- Post-plot modifications (S/R lines, grid, title) ---
+        # Manually draw S/R lines
+        if sr_levels and axes and hasattr(axes[0], 'axhline'):
             try:
-                price_ax = axes[0] # Typically the main price panel
+                price_ax = axes[0]
                 drawn_support = 0
                 drawn_resistance = 0
-                # Get the last closing price from the plotted data to determine S vs R
                 last_close = df_plot['close'].iloc[-1]
-
                 for level in sr_levels:
                     if isinstance(level, (int, float)):
                         if level <= last_close: # Support
                             price_ax.axhline(y=level, color=sr_support_color, linestyle='--', linewidth=0.8, alpha=0.7)
-                            logger.debug(f"Drawing support line at {level:.2f}")
                             drawn_support += 1
                         else: # Resistance
                             price_ax.axhline(y=level, color=sr_resistance_color, linestyle=':', linewidth=0.8, alpha=0.7)
-                            logger.debug(f"Drawing resistance line at {level:.2f}")
                             drawn_resistance += 1
-
                 if drawn_support > 0 or drawn_resistance > 0:
                     logger.info(f"Manually drew {drawn_support} support and {drawn_resistance} resistance lines.")
-                else:
-                    logger.info("No valid S/R levels provided or drawable.")
+                else: logger.info("No valid S/R levels provided or drawable.")
+            except IndexError: logger.error("Could not access axes[0] to draw S/R lines.")
+            except Exception as draw_err: logger.error(f"Error manually drawing S/R lines: {draw_err}")
+        elif sr_levels: logger.warning("S/R levels provided, but could not get valid axes object.")
 
-            except IndexError:
-                 logger.error("Could not access axes[0] to draw S/R lines. Plot might be empty or structure unexpected.")
-            except Exception as draw_err:
-                 logger.error(f"Error manually drawing S/R lines: {draw_err}")
-        elif sr_levels:
-             logger.warning("S/R levels provided, but could not get valid axes object to draw on.")
-        # --- End manual drawing ---
+        # Add grid
+        if axes and len(axes) > 0:
+            axes[0].grid(True, linestyle='--', alpha=0.3)
 
-    except Exception as e:
-        logger.error(f"Error during mplfinance plot generation: {e}")
-        # Attempt to show plot even if saving fails later
-        try: plt.show()
-        except: pass
-        return False
+        # Customize title
+        if title:
+            fig.suptitle(title, fontsize=14, color=title_color)
+        else:
+            date_range_str = ""
+            if not df_plot.empty:
+                try:
+                    start_dt_str = df_plot.index[0].strftime('%Y-%m-%d')
+                    end_dt_str = df_plot.index[-1].strftime('%Y-%m-%d')
+                    date_range_str = f"({start_dt_str} to {end_dt_str})"
+                except Exception as e: logger.warning(f"Could not format date range for title: {e}")
+            fig.suptitle(f'{timeframe.capitalize()} Candlestick Chart for {symbol} {date_range_str}', fontsize=14, color=title_color)
 
-
-    # Add grid to price panel (axes[0] is the main price panel)
-    if axes and len(axes) > 0:
-        axes[0].grid(True, linestyle='--', alpha=0.3)
-
-    # Customize title (mpf.plot handles the main title, this sets the figure suptitle)
-    if title:
-        fig.suptitle(title, fontsize=14, color=title_color)
-    else:
-        # Generate date range string safely
-        date_range_str = ""
-        if not df_plot.empty:
-            try:
-                start_dt_str = df_plot.index[0].strftime('%Y-%m-%d')
-                end_dt_str = df_plot.index[-1].strftime('%Y-%m-%d')
-                date_range_str = f"({start_dt_str} to {end_dt_str})"
-            except Exception as e:
-                logger.warning(f"Could not format date range for title: {e}")
-        fig.suptitle(f'{timeframe.capitalize()} Candlestick Chart for {symbol} {date_range_str}', fontsize=14, color=title_color)
-
-    # Save to file if output_file is provided
-    if output_file:
-        try:
+        # --- Save or Show ---
+        if output_file:
             # Ensure directory exists
             output_dir = os.path.dirname(output_file)
             if output_dir and not os.path.exists(output_dir):
                 os.makedirs(output_dir)
+            # Save the figure
             plt.savefig(output_file, dpi=300, bbox_inches='tight')
             logger.info(f"Chart saved to {output_file}")
-        except Exception as e:
-            logger.error(f"Failed to save chart to file '{output_file}': {e}")
-            plt.show() # Show plot if saving failed
-            return False
-    else:
-        plt.show()
+        else:
+            # Show the plot interactively
+            plt.show()
 
-    plt.close(fig) # Close the figure after showing or saving
-    return True
+        # --- Success Case ---
+        plt.close(fig) # Close the figure
+        return True   # Return True indicating success
+
+    except Exception as e:
+        # --- Error Handling ---
+        logger.error(f"Error during plot generation or saving for {symbol} (Theme: {theme}): {e}", exc_info=True)
+        # Fallback show/close
+        try:
+            if fig: plt.show() # Attempt to show if fig exists
+        except Exception: pass
+        if fig:
+            try: plt.close(fig) # Attempt to close if fig exists
+            except Exception: pass
+        return False # Return False indicating error
 
 def parse_arguments():
     """
@@ -300,6 +281,8 @@ def parse_arguments():
     parser.add_argument('--title', '-t', type=str, help='Custom title for the chart')
     # Add argument for support/resistance
     parser.add_argument('--sr', action='store_true', help='Calculate and plot support/resistance levels')
+    # Add argument for theme
+    parser.add_argument('--theme', type=str, choices=['light', 'dark'], default='light', help='Color theme for the chart (light or dark)')
 
     return parser.parse_args()
 
@@ -319,25 +302,45 @@ def generate_and_save_chart(symbol, days=90, timeframe='daily', sr_levels=None, 
         str or None: Relative URL path to the saved chart (e.g., '/static/plots/AAPL_light.png')
                      or None if chart generation failed.
     """
-    logger.info(f"Generating chart for {symbol} ({timeframe}, last {days} periods, S/R levels provided: {bool(sr_levels)}, Theme: {theme})")
+    # Log the theme received by the function immediately
+    logger.info(f"generate_and_save_chart called for {symbol}. Initial theme received: '{theme}'")
+    logger.info(f"Generating chart for {symbol} ({timeframe}, last {days} periods, S/R levels provided: {bool(sr_levels)}, Theme: {theme})") # This line was likely meant to be active
 
-    # Define output path relative to the project root
-    # Assumes Flask static folder is mapped correctly
-    output_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'static', 'plots')
+    # --- Improved Path Construction ---
+    try:
+        # Get the absolute path of the current script's directory
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Go up two levels to reach the 'src' directory's parent (project root)
+        project_root = os.path.dirname(os.path.dirname(current_script_dir))
+        # Construct the absolute path to the static/plots directory
+        output_dir_abs = os.path.join(project_root, 'static', 'plots')
+        logger.debug(f"Absolute output directory calculated: {output_dir_abs}") # Debug log
+    except Exception as path_err:
+        logger.error(f"Error constructing absolute path: {path_err}", exc_info=True)
+        return None # Cannot proceed without a valid path
+
     # Ensure the directory exists
     try:
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(output_dir_abs, exist_ok=True)
     except OSError as e:
-        logger.error(f"Could not create output directory '{output_dir}': {e}")
+        logger.error(f"Could not create output directory '{output_dir_abs}': {e}")
         return None
 
-    # Use a filename based on the symbol and theme
-    filename = f"{symbol}_{theme}.png"
-    output_file = os.path.join(output_dir, filename)
-    relative_url = f"/static/plots/{filename}" # URL path for Flask
+    # --- Robust Filename Creation ---
+    logger.info(f"[generate_and_save_chart] Received theme parameter: '{theme}' before validation.") # Log theme before validation
+    # Ensure theme is valid, default to 'light' if not 'light' or 'dark'
+    validated_theme = theme if theme in ['light', 'dark'] else 'light'
+    if theme != validated_theme:
+         logger.warning(f"Invalid theme value '{theme}' received by generate_and_save_chart. Defaulting to '{validated_theme}'.") # Log if default is used
 
-    # Fetch data using the imported function (fetch last 'days' worth + buffer for S/R calc if needed)
-    # Fetch data based on days needed for the plot
+    filename = f"{symbol}_{validated_theme}.png" # Use validated theme for filename
+    output_file = os.path.join(output_dir_abs, filename) # Use absolute path for saving
+    relative_url = f"/static/plots/{filename}" # URL path for Flask remains relative
+    logger.debug(f"Using theme '{validated_theme}' for filename: {filename}") # Log the theme used for filename
+    logger.debug(f"Output file path for saving: {output_file}")
+    logger.debug(f"Relative URL for Flask: {relative_url}")
+
+    # Fetch data using the imported function (fetch last 'days' worth + buffer for S/R calc if needed)	# Fetch data based on days needed for the plot
     fetch_days = days + 10 # Add small buffer
     end_date_dt = datetime.now()
     start_date_dt = end_date_dt - timedelta(days=fetch_days * (7 if timeframe == 'weekly' else 31 if timeframe == 'monthly' else 1.5)) # Estimate start date
@@ -376,9 +379,13 @@ def generate_and_save_chart(symbol, days=90, timeframe='daily', sr_levels=None, 
     # Create the plot using the final filtered data and relevant S/R levels
     # Generate a simpler title for the web view
     plot_title = f"{symbol} - Last {len(df_plot_final)} {timeframe.capitalize()} Periods"
-    success = plot_candlestick(df_plot_final, symbol, output_file=output_file, timeframe=timeframe, title=plot_title,
-                               sr_levels=sr_levels, # Pass the combined S/R levels
-                               theme=theme) # Pass theme here
+    # Pass the original theme parameter to plot_candlestick
+    success = plot_candlestick(df_plot_final, symbol,
+                               output_file=output_file,
+                               timeframe=timeframe,
+                               title=plot_title,
+                               sr_levels=sr_levels,
+                               theme=validated_theme) # Pass VALIDATED theme here
 
     if success:
         logger.info(f"Successfully generated and saved chart for {symbol} to {output_file}")
@@ -389,9 +396,10 @@ def generate_and_save_chart(symbol, days=90, timeframe='daily', sr_levels=None, 
         if os.path.exists(output_file):
             try:
                 os.remove(output_file)
+                logger.info(f"Removed potentially incomplete chart file: {output_file}") # Add log
             except OSError as e:
                 logger.warning(f"Could not remove potentially incomplete chart file '{output_file}': {e}")
-        return None
+        return None # Return None as chart generation failed
 
 
 def main():
@@ -409,7 +417,8 @@ def main():
             symbol=args.symbol.strip().upper(),
             days=args.days, # Pass days if provided
             timeframe=args.timeframe,
-            plot_sr=args.sr
+            sr_levels=None, # S/R calculation is handled differently in main for CLI vs web
+            theme=args.theme # Pass theme from args
         )
         if chart_path:
             print(f"Chart saved successfully. Relative path: {chart_path}")
@@ -426,6 +435,7 @@ def main():
         timeframe = args.timeframe
         title = args.title
         plot_sr = args.sr
+        theme = args.theme # Get theme from args
 
         raw_df = fetch_ohlc_data_db(symbol, start_date, end_date)
         if raw_df is None or raw_df.empty:
@@ -473,8 +483,8 @@ def main():
 
         # Plot interactively (no output_file)
         plot_candlestick(df_plot_final, symbol, output_file=None, timeframe=timeframe, title=title,
-                         support_levels=support_levels_to_plot,
-                         resistance_levels=resistance_levels_to_plot)
+                         sr_levels=support_levels_to_plot + resistance_levels_to_plot if support_levels_to_plot and resistance_levels_to_plot else None, # Combine S/R levels
+                         theme=theme) # Pass theme here
 
 
 if __name__ == "__main__":

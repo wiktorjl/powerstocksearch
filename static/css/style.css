@@ -355,6 +355,31 @@ button[type="submit"]:active {
     margin-right: var(--spacing-sm);
 }
 
+/* Definition List Styling (stock_detail.html) */
+.company-details dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--spacing-sm) var(--spacing-lg);
+    margin-top: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl); /* Replaces HR */
+}
+
+.company-details dt {
+    font-weight: 600;
+    color: var(--secondary-color);
+    text-align: right;
+}
+
+.company-details dd {
+    margin-left: 0; /* Reset browser default */
+}
+
+.company-details dd .company-logo {
+    max-height: 30px; /* Slightly smaller logo in list */
+    vertical-align: middle;
+}
+
+
 #results ul {
     list-style: none;
     padding-left: 0;
@@ -378,6 +403,24 @@ button[type="submit"]:active {
 }
 
 
+/* Data Points Styling (stock_search.html) */
+.data-points {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm) var(--spacing-lg);
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-md);
+    background-color: var(--light-grey);
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--medium-light-grey);
+}
+
+.data-points p {
+    margin: 0;
+    flex: 1 1 auto; /* Allow items to grow and shrink */
+}
+
+
 /* Error Message */
 .error {
     color: var(--error-text);
@@ -391,6 +434,41 @@ button[type="submit"]:active {
     max-width: 900px; /* Match content width */
     box-sizing: border-box;
 }
+
+/* Flash Messages Styling (scan.html) */
+.flash-messages {
+    width: 100%;
+    max-width: 900px; /* Match content width */
+    margin-bottom: var(--spacing-lg);
+}
+
+.alert {
+    padding: var(--spacing-md) var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-md);
+    text-align: center;
+}
+
+.alert-danger {
+    color: var(--error-text);
+    background-color: var(--error-bg);
+    border-color: var(--error-border);
+}
+
+/* Add other alert types (success, warning, info) if needed */
+.alert-success {
+    color: #0f5132;
+    background-color: #d1e7dd;
+    border-color: #badbcc;
+}
+
+[data-theme="dark"] .alert-success {
+    color: #6ee3a0;
+    background-color: #0a3622;
+    border-color: #1a4d3e;
+}
+
 
 
 /* Results Table (Scan Page) Hover Effect */
@@ -436,6 +514,112 @@ button[type="submit"]:active {
 }
 
 
+
+/* --- Section Separation Styling --- */
+
+/* Common block elements within the results/content area */
+#results > .chart-container,
+#results > .company-info-block,
+#results > .company-summary,
+#results > .economic-variables,
+#results > .economic-analysis,
+#results > .data-points,
+#results > .indicators-block,
+#results > .historical-data-block,
+.content-container > .company-details, /* For stock_detail */
+.content-container > .economic-analysis, /* For stock_detail */
+.content-container > .historical-data-block /* For stock_detail */
+{
+    margin-top: var(--spacing-xl); /* Add space ABOVE each section */
+    padding-top: var(--spacing-lg);   /* Add space above content within the section */
+    border-top: 1px solid var(--border-color); /* Add a separator line above */
+    margin-bottom: 0; /* Reset bottom margin, spacing is handled by margin-top of next element */
+}
+
+/* Remove top margin/padding/border from the very first section */
+#results > *:first-child,
+.content-container > h1 + *,
+.content-container > h2 + *,
+.content-container > h3 + * /* Select first element after any heading */
+{
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+/* Ensure headings have space below them */
+#results h3,
+.content-container h3,
+#results h2,
+.content-container h2
+{
+    margin-bottom: var(--spacing-md);
+}
+
+/* Specific adjustments */
+.data-points {
+    /* .data-points already has internal padding, keep it */
+    /* margin-top and border-top are handled by the general rule */
+}
+
+/* Ensure the main container has padding at the bottom */
+.content-container {
+    padding-bottom: var(--spacing-xl);
+}
+
+/* Remove bottom margin from the last element inside the container */
+#results > *:last-child,
+.content-container > *:last-child {
+    margin-bottom: 0;
+}
+
+
+/* Filter Form Styling (scan.html) */
+.filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md) var(--spacing-lg);
+    align-items: flex-end; /* Align items to bottom for cleaner look */
+    margin-bottom: var(--spacing-xl);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column; /* Stack label and inputs */
+    gap: var(--spacing-xs);
+    flex: 1 1 180px; /* Allow groups to grow/shrink, base width */
+}
+
+.filter-group label {
+    font-weight: 600;
+    color: var(--secondary-color);
+    font-size: 0.9rem;
+}
+
+.filter-group select,
+.filter-group input[type="number"] {
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--input-bg);
+    color: var(--input-text);
+    font-size: 0.95rem;
+    width: 100%; /* Make inputs fill the group */
+    box-sizing: border-box;
+}
+
+.filter-group input[type="number"] {
+    /* Adjust width if needed, maybe slightly less than select */
+}
+
+.filter-form button[type="submit"] {
+    flex-basis: auto; /* Let button size naturally */
+    align-self: flex-end; /* Ensure button aligns with bottom of inputs */
+    padding: var(--spacing-sm) var(--spacing-lg); /* Slightly smaller padding */
+    margin-left: var(--spacing-md); /* Add space if needed */
+}
+
+
 /* Responsive Adjustments */
 @media (max-width: 768px) {
     body {
@@ -472,6 +656,64 @@ button[type="submit"]:active {
         padding: var(--spacing-sm); /* Reduce padding on smaller screens */
     }
 }
+
+/* Pagination Styling */
+.pagination {
+    margin-top: var(--spacing-xl);
+    text-align: center;
+    width: 100%;
+}
+
+.pagination-info {
+    display: block;
+    margin-bottom: var(--spacing-md);
+    color: var(--secondary-color);
+    font-size: 0.9rem;
+}
+
+.pagination-link,
+.pagination-disabled,
+.pagination-current {
+    display: inline-block;
+    padding: var(--spacing-sm) var(--spacing-md);
+    margin: 0 var(--spacing-xs);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.pagination-link {
+    color: var(--primary-color);
+    background-color: var(--container-bg);
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.pagination-link:hover {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    text-decoration: none;
+}
+
+.pagination-disabled {
+    color: var(--secondary-color);
+    background-color: var(--medium-light-grey);
+    cursor: not-allowed;
+}
+
+.pagination-current {
+    color: var(--nav-text);
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    font-weight: 600;
+}
+
+[data-theme="dark"] .pagination-disabled {
+    background-color: var(--medium-light-grey);
+    color: var(--secondary-color);
+}
+
 
 @media (max-width: 480px) {
     /* Inherits stacking from 768px breakpoint */
@@ -523,6 +765,17 @@ button[type="submit"]:active {
     .results-table td {
         padding: var(--spacing-xs);
     }
+
+    /* Add bottom margin to sections to replace HR */
+    .chart-container,
+    .company-summary,
+    .economic-variables,
+    .economic-analysis,
+    .indicators-list-container, /* Assuming a container for the indicators ul */
+    .data-points {
+        margin-bottom: var(--spacing-xl);
+    }
+
 }
 
 /* Detached Theme Toggle */
@@ -604,4 +857,216 @@ button[type="submit"]:active {
 }
 [data-theme="dark"] .theme-toggle .icon.moon::before {
      color: #f1c40f; /* Keep or adjust */
+}
+
+
+/* --- Economic Influence Factors Styling (Revised) --- */
+
+/* Container for the whole section */
+.economic-influences-block {
+    /* Inherits general section styling */
+}
+
+/* Container for the groups (Macro and Company) */
+.influence-groups-container {
+    display: flex;
+    flex-direction: column; /* Stack groups vertically */
+    gap: var(--spacing-xl); /* Space between Macro and Company groups */
+    margin-top: var(--spacing-md); /* Space below the main heading */
+}
+
+/* Container for columns within a group (Macro or Company) */
+.influence-group {
+    display: flex;
+    flex-wrap: wrap; /* Allow columns within a group to wrap */
+    gap: var(--spacing-lg); /* Space between columns within a group */
+}
+
+/* Individual column styling (remains largely the same) */
+.influence-column {
+    flex: 1 1 200px;
+    background-color: var(--light-grey);
+    padding: var(--spacing-md);
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--medium-light-grey);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Dark theme adjustments for columns */
+[data-theme="dark"] .influence-column {
+    background-color: var(--medium-light-grey);
+    border-color: var(--border-color);
+    box-shadow: 0 2px 4px rgba(255,255,255,0.05);
+}
+
+/* --- Additions for Macro/Company Distinction (Applied to columns) --- */
+
+/* Specific background for company columns */
+.company-column {
+    background-color: #f0f3f5;
+}
+
+/* Dark theme adjustment for company columns */
+[data-theme="dark"] .company-column {
+    background-color: #3a4045;
+}
+
+/* Optional: Add a subtle top border to differentiate company columns */
+.company-column {
+    border-top: 2px solid var(--primary-color);
+    padding-top: calc(var(--spacing-md) - 2px);
+}
+
+[data-theme="dark"] .company-column {
+     border-top-color: var(--primary-hover-color);
+}
+
+
+/* Column headings */
+.influence-column h4 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--secondary-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: var(--spacing-xs);
+}
+
+/* Lists within columns */
+.influence-column ul {
+    list-style: none; /* Remove default bullets */
+    padding-left: 0;
+    margin-top: var(--spacing-sm);
+    margin-bottom: 0; /* Remove default bottom margin */
+}
+
+/* List items */
+.influence-column li {
+    margin-bottom: var(--spacing-xs);
+    padding-left: var(--spacing-md); /* Indent text */
+    position: relative;
+    font-size: 0.95rem;
+    border-bottom: none; /* Override general list item border */
+    padding-bottom: 0; /* Override general list item padding */
+}
+
+/* Add custom bullet points (optional) */
+.influence-column li::before {
+    content: '•'; /* Bullet character */
+    position: absolute;
+    left: 0;
+    color: var(--primary-color); /* Use theme color */
+    font-weight: bold;
+}
+
+/* Specific styling for positive/negative factors (optional) */
+.influence-column:nth-child(odd) li::before { /* Positive factors */
+    color: #28a745; /* Green */
+}
+.influence-column:nth-child(even) li::before { /* Negative factors */
+    color: #dc3545; /* Red */
+}
+
+[data-theme="dark"] .influence-column:nth-child(odd) li::before {
+    color: #3dd563; /* Lighter green */
+}
+[data-theme="dark"] .influence-column:nth-child(even) li::before {
+    color: #ff6b79; /* Lighter red */
+}
+
+
+
+/* --- 90-Day Trend Summary Styling --- */
+.trend-summary {
+    margin-top: var(--spacing-lg); /* Space above the trend box */
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--border-radius-md);
+    text-align: center;
+    border: 1px solid transparent; /* Base border */
+    background-color: var(--light-grey); /* Default background */
+    /* Inherits section spacing via margin-top */
+    border-top: 1px solid var(--border-color); /* Add separator line like other sections */
+    padding-top: var(--spacing-lg);
+}
+
+.trend-summary h3 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--secondary-color);
+}
+
+.trend-summary p {
+    margin: 0;
+    font-size: 1.2rem; /* Larger text for prominence */
+    font-weight: bold;
+    display: flex; /* Align icon and text */
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+}
+
+.trend-summary .trend-icon {
+    font-size: 1.5rem; /* Larger icon */
+    line-height: 1; /* Prevent extra space */
+}
+
+/* Trend Up Styles */
+.trend-summary.trend-up {
+    background-color: #d4edda; /* Light green background */
+    border-color: #c3e6cb;
+    color: #155724; /* Dark green text */
+}
+.trend-summary.trend-up .trend-icon {
+    color: #28a745; /* Bootstrap success green */
+}
+
+/* Trend Down Styles */
+.trend-summary.trend-down {
+    background-color: #f8d7da; /* Light red background */
+    border-color: #f5c6cb;
+    color: #721c24; /* Dark red text */
+}
+.trend-summary.trend-down .trend-icon {
+    color: #dc3545; /* Bootstrap danger red */
+}
+
+/* Trend Flat Styles */
+.trend-summary.trend-flat {
+    background-color: #e2e3e5; /* Light grey background */
+    border-color: #d6d8db;
+    color: #383d41; /* Dark grey text */
+}
+.trend-summary.trend-flat .trend-icon {
+    color: #6c757d; /* Bootstrap secondary grey */
+}
+
+/* Dark Theme Adjustments */
+[data-theme="dark"] .trend-summary.trend-up {
+    background-color: #143620; /* Darker green */
+    border-color: #1a4d3e;
+    color: #75b798; /* Lighter green text */
+}
+[data-theme="dark"] .trend-summary.trend-up .trend-icon {
+    color: #3dd563; /* Lighter green icon */
+}
+
+[data-theme="dark"] .trend-summary.trend-down {
+    background-color: #3e1b21; /* Darker red */
+    border-color: #582c33;
+    color: #f1aeb5; /* Lighter red text */
+}
+[data-theme="dark"] .trend-summary.trend-down .trend-icon {
+    color: #ff6b79; /* Lighter red icon */
+}
+
+[data-theme="dark"] .trend-summary.trend-flat {
+    background-color: #3a4045; /* Darker grey */
+    border-color: #495057;
+    color: #adb5bd; /* Lighter grey text */
+}
+[data-theme="dark"] .trend-summary.trend-flat .trend-icon {
+    color: #adb5bd; /* Lighter grey icon */
 }
