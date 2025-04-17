@@ -10,3 +10,4 @@ scipy
 scikit-learn
 finnhub-python
 openai
+gunicorn

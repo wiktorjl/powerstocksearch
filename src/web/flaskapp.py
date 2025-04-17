@@ -344,6 +344,7 @@ def search_page():
     economic_variables = None # Initialize economic variables
     economic_analysis = None # Initialize economic analysis
     economic_influences = None # Initialize economic influences
+    trend = None # Initialize trend
 
     if symbol:
         symbol_upper = symbol.upper()
@@ -355,7 +356,7 @@ def search_page():
         details_url = f"{api_base_url}/symbols/{symbol_upper}?theme={theme}"
         logger.info(f"Fetching details from internal API: {details_url}")
         try:
-            response = requests.get(details_url, timeout=5)
+            response = requests.get(details_url, timeout=15)
             response.raise_for_status()
             api_response_data = response.json()
             company_data = api_response_data
@@ -557,7 +558,7 @@ def search_symbol():
         details_url = f"{api_base_url}/symbols/{symbol_upper}?theme={theme}"
         logger.info(f"Fetching details from internal API: {details_url}")
         try:
-            response = requests.get(details_url, timeout=5)
+            response = requests.get(details_url, timeout=15)
             response.raise_for_status()
             api_response_data = response.json()
             company_data = api_response_data
