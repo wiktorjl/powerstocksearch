@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {# Removed inline styles - rely on static/css/style.css #}
+</head>
+<body>
+    <nav class="main-nav">
+        <ul>
+            <li><a href="{{ url_for('search_page') }}" {% if active_page == 'search' %}class="active"{% endif %}>Search</a></li>
+            <li><a href="{{ url_for('scan_page') }}" {% if active_page == 'scan' %}class="active"{% endif %}>Scan</a></li>
+        </ul>
+    </nav>
+
+
+    <h1>Stock Scanner</h1>
+
+    {# Display Flash Messages (Keep near top) #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-messages"> {# Assuming styles for this exist or will be added #}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div> {# Assuming styles for this exist #}
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {# Use search-container class for consistency #}
+    <div class="search-container content-container">
+        <form action="{{ url_for('scan_page') }}" method="post" class="filter-form"> {# Keep filter-form class for potential specific styling #}
+            <div class="filter-group">
+                <label for="sector">Sector:</label>
+                <select id="sector" name="sector">
+                    <option value="">-- Any Sector --</option>
+                    {% for sector in sectors %}
+                        <option value="{{ sector }}" {% if form_data.sector == sector %}selected{% endif %}>{{ sector }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="close_op">Close Price:</label>
+                <select id="close_op" name="close_op">
+                    <option value="">-- Operator --</option>
+                    <option value=">" {% if form_data.close_op == '>' %}selected{% endif %}>></option>
+                    <option value="<" {% if form_data.close_op == '<' %}selected{% endif %}><</option>
+                    <option value="=" {% if form_data.close_op == '=' %}selected{% endif %}>=</option>
+                    <option value=">=" {% if form_data.close_op == '>=' %}selected{% endif %}>>=</option>
+                    <option value="<=" {% if form_data.close_op == '<=' %}selected{% endif %}><=</option>
+                </select>
+                <input type="number" step="any" id="close_val" name="close_val" placeholder="Value" value="{{ form_data.close_val or '' }}">
+            </div>
+
+            <div class="filter-group">
+                <label for="vol_op">Volume:</label>
+                <select id="vol_op" name="vol_op">
+                    <option value="">-- Operator --</option>
+                    <option value=">" {% if form_data.vol_op == '>' %}selected{% endif %}>></option>
+                    <option value="<" {% if form_data.vol_op == '<' %}selected{% endif %}><</option>
+                    <option value="=" {% if form_data.vol_op == '=' %}selected{% endif %}>=</option>
+                    <option value=">=" {% if form_data.vol_op == '>=' %}selected{% endif %}>>=</option>
+                    <option value="<=" {% if form_data.vol_op == '<=' %}selected{% endif %}><=</option>
+                </select>
+                <input type="number" step="1" id="vol_val" name="vol_val" placeholder="Value" value="{{ form_data.vol_val or '' }}">
+            </div>
+
+            <button type="submit">Scan</button>
+        </form>
+    </div>
+
+    {# Use results id for consistency #}
+    {% if error or results is not none %}
+    <div id="results" class="content-container">
+        {# Moved error display inside results div #}
+        {% if error %}
+            <p class="error">Error: {{ error }}</p> {# Assuming .error class is styled in css #}
+        {% endif %}
+
+        {% if results is not none %}
+            {% if results %}
+                <table class="results-table"> {# Assuming styles exist #}
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Name</th>
+                            <th>Sector</th>
+                            <th>Price</th>
+                            <th>Volume</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stock in results %}
+                            <tr data-symbol="{{ stock.symbol }}">
+                                <td>{{ stock.symbol }}</td>
+                                <td>{{ stock.name }}</td>
+                                <td>{{ stock.sector }}</td>
+                                <td>{{ stock.close | currency }}</td>
+                                <td>{{ stock.volume | large_number }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                {# Pagination Controls #}
+                {% if pagination and pagination.total_pages > 1 %}
+                    <div class="pagination">
+                        <span class="pagination-info">Page {{ pagination.page }} of {{ pagination.total_pages }} ({{ pagination.total_count }} results)</span>
+
+                        {% if pagination.has_prev %}
+                            <a href="{{ url_for('scan_page', page=pagination.prev_num, **pagination.filters) }}" class="pagination-link">&laquo; Previous</a>
+                        {% else %}
+                            <span class="pagination-disabled">&laquo; Previous</span>
+                        {% endif %}
+
+                        {% if pagination.has_next %}
+                            <a href="{{ url_for('scan_page', page=pagination.next_num, **pagination.filters) }}" class="pagination-link">Next &raquo;</a>
+                        {% else %}
+                            <span class="pagination-disabled">Next &raquo;</span>
+                        {% endif %}
+                    </div>
+                {% elif pagination %}
+                     <p class="pagination-info">Total results: {{ pagination.total_count }}</p>
+                {% endif %}
+
+            {% else %}
+                 {% if request.method == 'POST' or request.args %}
+                    <p>No stocks found matching your criteria.</p>
+                 {% endif %}
+            {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const tableBody = document.querySelector('.results-table tbody');
+            if (tableBody) {
+                tableBody.addEventListener('click', function(event) {
+                    const row = event.target.closest('tr');
+                    if (row && row.dataset.symbol) {
+                        const symbol = row.dataset.symbol;
+                        // Redirect to the search page with the symbol as a query parameter
+                        window.location.href = `/search?symbol=${encodeURIComponent(symbol)}`;
+                    }
+                });
+            }
+        });
+    </script>
+
+    <footer>
+        <p>&copy; 2025 PowerStockSearch. All rights reserved. Data provided for informational purposes only.</p>
+    </footer>
+</body>
+</html>

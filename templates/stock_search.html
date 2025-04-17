@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Symbol Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Styles moved to static/css/style.css -->
+</head>
+<body>
+    <nav class="main-nav">
+        <ul>
+            <li><a href="{{ url_for('search_page') }}" {% if active_page == 'search' %}class="active"{% endif %}>Search</a></li>
+            <li><a href="{{ url_for('scan_page') }}" {% if active_page == 'scan' %}class="active"{% endif %}>Scan</a></li>
+        </ul>
+    </nav>
+
+
+    <!-- Removed redundant H1 title -->
+
+    <div class="search-container content-container">
+        <form action="{{ url_for('search_symbol') }}" method="post" id="search-form"> <!-- Removed redundant class -->
+            <div class="input-wrapper" style="position: relative;"> <!-- Removed margin-bottom -->
+                <label for="symbol" class="sr-only">Enter Stock Symbol:</label> <!-- Added sr-only class for accessibility, label still useful -->
+                <input type="text" id="symbol" name="symbol" placeholder="Enter Stock Symbol" value="{{ search_term or '' }}" autocomplete="off" required>
+                <div id="autocomplete-list" class="autocomplete-suggestions"></div>
+            </div>
+            <button type="submit">Search</button>
+        </form>
+    </div>
+
+    {% if error or company_data %}
+    <div id="results" class="content-container">
+        {% if error %}
+            <p class="error">Error: {{ error }}</p>
+        {% endif %}
+
+        {% if company_data %}
+            {# Display Chart first if available #}
+            {% if chart_url %}
+                <div class="chart-container"> {# Styling handled by CSS #}
+                    <h3>Recent Price Chart:</h3>
+                    <img class="stock-chart-image" src="{{ chart_url }}" alt="{{ company_data.get('symbol', 'Stock') }} Chart"> {# Removed inline styles, added class #}
+                </div>
+            {% endif %}
+            {# End Chart Display #}
+
+            {# Use the keys returned by fetch_symbol_details_db #}
+            {# Display Logo first if available #}
+            {% if company_data.get('logo') %}
+                <img class="company-logo" src="{{ company_data.get('logo') }}" alt="{{ company_data.get('name', 'N/A') }} Logo"> {# Removed inline styles, added class #}
+            {% endif %}
+            {# Display Symbol and Name #}
+            <h2>{{ company_data.get('symbol', 'N/A') }} - {{ company_data.get('name', 'N/A') }}</h2> {# Styling handled by CSS #}
+            {# Display Website URL below the heading #}
+            {% if company_data.get('weburl') %}
+                <p><strong>Website:</strong> <a href="{{ company_data.get('weburl') }}" target="_blank">{{ company_data.get('weburl') }}</a></p>
+            {% endif %}
+            <p><strong>Sector:</strong> {{ company_data.get('sector', 'N/A') }}</p>
+            <p><strong>Subsector:</strong> {{ company_data.get('subsector', 'N/A') }}</p>
+            {# Description is not available from this endpoint #}
+            {# Displaying latest OHLC data if available #}
+            {# Displaying latest OHLC data using the 'latest_' prefixed keys #}
+            <p><strong>Last Timestamp:</strong> {{ company_data.get('latest_timestamp') | date }}</p>
+            <p><strong>Close:</strong> {{ company_data.get('latest_close') | currency }} | <strong>Open:</strong> {{ company_data.get('latest_open') | currency }} | <strong>High:</strong> {{ company_data.get('latest_high') | currency }} | <strong>Low:</strong> {{ company_data.get('latest_low') | currency }}</p>
+            <p><strong>Volume:</strong> {{ company_data.get('latest_volume') | large_number }}</p>
+            <hr class="section-divider"> {# Added visual separator #}
+            {# Display Indicators if available #}
+            {% if indicators %}
+                <h3>Latest Indicators:</h3>
+                <ul>
+                    {# Iterate through the list of indicator dictionaries #}
+                    {% for indicator in indicators|sort(attribute='description') %}
+                        <li><strong>{{ indicator.description }}:</strong> {{ indicator | indicator }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %} {# End indicators check #}
+
+            {# Display Historical Data Table and Pagination #}
+            {% if historical_data %}
+                <hr style="margin-top: 20px; margin-bottom: 20px;">
+                <h3>Historical Prices (Split-Adjusted, Latest First)</h3>
+                <table class="results-table"> {# Use existing class for styling #}
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Open</th>
+                            <th>High</th>
+                            <th>Low</th>
+                            <th>Close</th>
+                            <th>Volume</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in historical_data %}
+                        <tr>
+                            <td>{{ row.timestamp | date }}</td>
+                            <td>{{ row.open | currency }}</td>
+                            <td>{{ row.high | currency }}</td>
+                            <td>{{ row.low | currency }}</td>
+                            <td>{{ row.close | currency }}</td>
+                            <td>{{ row.volume | large_number }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                {# Pagination Controls for Historical Data #}
+                {% if pagination and pagination.total_pages > 1 %}
+                <div class="pagination"> {# Styling handled by CSS #}
+                    {% if pagination.has_prev %}
+                        {# Link back to the search page with the same symbol and previous page number #}
+                        <a href="{{ url_for('search_page', symbol=pagination.symbol, page=pagination.prev_num) }}" class="pagination-link">&laquo; Previous</a>
+                    {% else %}
+                        <span class="pagination-disabled">&laquo; Previous</span>
+                    {% endif %}
+
+                    <span class="pagination-current">Page {{ pagination.page }} of {{ pagination.total_pages }}</span>
+
+                    {% if pagination.has_next %}
+                        <a href="{{ url_for('search_page', symbol=pagination.symbol, page=pagination.next_num) }}" class="pagination-link">Next &raquo;</a>
+                    {% else %}
+                        <span class="pagination-disabled">Next &raquo;</span>
+                    {% endif %}
+                </div>
+                {% endif %} {# End pagination check #}
+
+            {% elif company_data %} {# Only show this if company data exists but historical doesn't #}
+                <p>No historical price data available for this stock.</p>
+            {% endif %} {# End historical_data check #}
+
+        {% elif not error and (request.method == 'POST' or request.args.get('symbol')) and not company_data %}
+             <p>No data found for the submitted symbol.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <script>
+        const symbolInput = document.getElementById('symbol');
+        const autocompleteList = document.getElementById('autocomplete-list');
+        let currentFocus = -1; // For keyboard navigation
+
+        symbolInput.addEventListener('input', function(e) {
+            const prefix = this.value;
+            closeAllLists(); // Close existing lists
+            if (!prefix || prefix.length < 1) { // Minimum prefix length
+                autocompleteList.style.display = 'none'; // Hide list if prefix too short
+                return false;
+            }
+            currentFocus = -1; // Reset focus
+
+            // Fetch suggestions
+            fetch(`/autocomplete?prefix=${encodeURIComponent(prefix)}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(suggestions => {
+                    if (suggestions.error) {
+                        console.error("Autocomplete error:", suggestions.error);
+                        closeAllLists(); // Hide list on error
+                        return;
+                    }
+                    if (!Array.isArray(suggestions)) {
+                        console.error("Autocomplete response is not an array:", suggestions);
+                        closeAllLists(); // Hide list on invalid data
+                        return;
+                    }
+
+                    autocompleteList.innerHTML = ''; // Clear previous suggestions
+                    if (suggestions.length === 0) {
+                        autocompleteList.style.display = 'none';
+                        return;
+                    }
+                    autocompleteList.style.display = 'block'; // Show the list
+
+                    suggestions.forEach(item => {
+                        const suggestionDiv = document.createElement('div');
+                        suggestionDiv.classList.add('autocomplete-suggestion');
+                        // Assuming suggestions are strings like "AAPL"
+                        // Make the matching part bold
+                        const matchIndex = item.toUpperCase().indexOf(prefix.toUpperCase());
+                        if (matchIndex !== -1) {
+                             suggestionDiv.innerHTML = item.substring(0, matchIndex) +
+                                                    `<strong>${item.substring(matchIndex, matchIndex + prefix.length)}</strong>` +
+                                                    item.substring(matchIndex + prefix.length);
+                        } else {
+                             suggestionDiv.innerHTML = item; // Fallback if no match (shouldn't happen with prefix search)
+                        }
+                        suggestionDiv.dataset.symbol = item; // Store the symbol
+
+                        suggestionDiv.addEventListener('click', function() {
+                            symbolInput.value = this.dataset.symbol; // Use stored symbol
+                            closeAllLists();
+                        });
+                        autocompleteList.appendChild(suggestionDiv);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching autocomplete suggestions:', error);
+                    closeAllLists();
+                });
+        });
+
+        // Handle keyboard navigation
+        symbolInput.addEventListener('keydown', function(e) {
+            let suggestions = autocompleteList.getElementsByTagName('div');
+            if (autocompleteList.style.display === 'none' || suggestions.length === 0) return; // Only navigate if list is visible
+
+            if (e.keyCode == 40) { // Down arrow
+                currentFocus++;
+                addActive(suggestions);
+            } else if (e.keyCode == 38) { // Up arrow
+                currentFocus--;
+                addActive(suggestions);
+            } else if (e.keyCode == 13) { // Enter
+                e.preventDefault(); // Prevent form submission if navigating
+                if (currentFocus > -1) {
+                    // Simulate click on active item
+                    if (suggestions[currentFocus]) suggestions[currentFocus].click();
+                } else {
+                    // If Enter is pressed without selecting a suggestion, submit the form
+                     document.getElementById('search-form').submit();
+                }
+                 closeAllLists();
+            } else if (e.keyCode == 27) { // Escape
+                 closeAllLists();
+            }
+        });
+
+        function addActive(suggestions) {
+            if (!suggestions) return false;
+            removeActive(suggestions);
+            if (currentFocus >= suggestions.length) currentFocus = 0;
+            if (currentFocus < 0) currentFocus = (suggestions.length - 1);
+            suggestions[currentFocus].classList.add('autocomplete-active');
+            // Ensure the active item is visible
+            suggestions[currentFocus].scrollIntoView({ block: 'nearest' });
+        }
+
+        function removeActive(suggestions) {
+            for (let i = 0; i < suggestions.length; i++) {
+                suggestions[i].classList.remove('autocomplete-active');
+            }
+        }
+
+        function closeAllLists(elmnt) {
+            // Close all autocomplete lists in the document, except the one passed as an argument
+            const lists = document.getElementsByClassName('autocomplete-suggestions');
+            for (let i = 0; i < lists.length; i++) {
+                if (elmnt != lists[i] && elmnt != symbolInput) {
+                    lists[i].innerHTML = '';
+                    lists[i].style.display = 'none';
+                }
+            }
+             // If the element clicked is not the input field, close the list
+             if (elmnt !== symbolInput) {
+                 autocompleteList.innerHTML = '';
+                 autocompleteList.style.display = 'none';
+             }
+        }
+
+        // Close the list if user clicks outside
+        document.addEventListener('click', function (e) {
+            // Check if the click target is outside the input and the suggestions list
+            if (e.target !== symbolInput && !autocompleteList.contains(e.target)) {
+                 closeAllLists();
+            }
+        });
+
+    </script>
+
+    <footer>
+        <p>&copy; 2025 PowerStockSearch. All rights reserved. Data provided for informational purposes only.</p>
+    </footer>
+</body>
+</html>

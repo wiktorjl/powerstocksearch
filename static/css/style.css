@@ -1,0 +1,465 @@
+/* static/css/style.css */
+:root {
+    --primary-color: #007bff; /* Vibrant Blue */
+    --primary-hover-color: #0056b3; /* Darker Blue */
+    --secondary-color: #6c757d; /* Medium Grey */
+    --light-grey: #f8f9fa; /* Very Light Grey */
+    --medium-light-grey: #e9ecef; /* Slightly darker light grey */
+    --dark-grey: #343a40; /* Dark Grey */
+    --text-color: #212529; /* Near Black */
+    --background-color: #ffffff; /* Clean White */
+    --container-bg: #ffffff;
+    --border-color: #dee2e6; /* Light Border */
+    --shadow-color: rgba(0, 0, 0, 0.075);
+    --error-bg: #f8d7da;
+    --error-text: #721c24;
+    --error-border: #f5c6cb;
+    --nav-bg: var(--dark-grey);
+    --nav-text: #ffffff;
+    --nav-hover-bg: #495057; /* Slightly lighter dark grey */
+
+    --border-radius-sm: 0.25rem; /* 4px */
+    --border-radius-md: 0.5rem;  /* 8px */
+    --border-radius-lg: 0.8rem;  /* 12px */
+
+    --spacing-xs: 0.25rem; /* 4px */
+    --spacing-sm: 0.5rem;  /* 8px */
+    --spacing-md: 1rem;    /* 16px */
+    --spacing-lg: 1.5rem;  /* 24px */
+    --spacing-xl: 2rem;    /* 32px */
+    --spacing-xxl: 2.5rem; /* 40px */
+}
+
+/* General Styles */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; /* Modern font stack */
+    background-color: var(--light-grey); /* Lighter background */
+    color: var(--text-color);
+    margin: 0;
+    padding: var(--spacing-xxl) var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    box-sizing: border-box;
+    line-height: 1.6; /* Improved readability */
+}
+
+h1 {
+    color: var(--dark-grey);
+    margin-bottom: var(--spacing-xl);
+    text-align: center;
+    font-weight: 600; /* Slightly less heavy */
+}
+
+a {
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+a:hover {
+    color: var(--primary-hover-color);
+    text-decoration: underline;
+}
+
+/* Navigation Bar */
+.main-nav {
+    width: 100%;
+    max-width: 900px; /* Slightly wider */
+    background-color: var(--nav-bg);
+    padding: var(--spacing-sm) 0;
+    margin-bottom: var(--spacing-xl);
+    border-radius: var(--border-radius-md);
+    box-shadow: 0 2px 5px var(--shadow-color);
+    box-sizing: border-box;
+}
+
+.main-nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+}
+
+.main-nav li {
+    margin: 0 var(--spacing-md);
+}
+
+.main-nav a {
+    color: var(--nav-text);
+    text-decoration: none;
+    font-weight: 500;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius-sm);
+    transition: background-color 0.2s ease;
+}
+
+.main-nav a:hover,
+.main-nav a.active {
+    background-color: var(--nav-hover-bg);
+    text-decoration: none;
+}
+
+/* Main Content Containers (Search & Results) */
+.content-container { /* New class for common styling */
+    background-color: var(--container-bg);
+    padding: var(--spacing-xl);
+    border-radius: var(--border-radius-lg);
+    box-shadow: 0 5px 15px var(--shadow-color);
+    width: 100%;
+    max-width: 900px; /* Match navbar */
+    margin-bottom: var(--spacing-xl);
+    box-sizing: border-box;
+    border: 1px solid var(--border-color); /* Subtle border */
+}
+
+.search-container {
+    position: relative; /* Keep for suggestions */
+    /* Inherits from .content-container - Apply this class in HTML */
+}
+
+#results {
+    /* Inherits from .content-container - Apply this class in HTML */
+    margin-top: 0; /* Reset margin */
+}
+
+
+/* Search Form */
+/* Search Form - Force Inline Layout */
+#search-form {
+    display: flex;          /* Enable flexbox */
+    flex-direction: row;    /* Align children horizontally */
+    align-items: center;    /* Vertically align items in the middle */
+    gap: var(--spacing-sm); /* Space between input wrapper and button */
+    margin-bottom: var(--spacing-xl); /* Space below the form */
+}
+
+#search-form label {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    font-weight: 600;
+    color: var(--secondary-color); /* Softer label color */
+}
+
+#symbol {
+    width: 100%;
+    padding: var(--spacing-md) var(--spacing-lg); /* More padding */
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    box-sizing: border-box;
+    font-size: 1rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    background-color: var(--background-color); /* Ensure background matches */
+}
+
+#symbol:focus {
+    border-color: var(--primary-color);
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Style the wrapper and button specifically within the search form */
+#search-form .input-wrapper {
+    flex-grow: 1; /* Allow input wrapper to take available space */
+    position: relative; /* Needed for absolute positioning of autocomplete */
+}
+
+/* Removed duplicate rule block */
+
+#search-form input[type="text"] {
+    width: 100%; /* Make input take full width of its container */
+    margin-bottom: 0; /* Remove default bottom margin */
+    /* height: 100%; <- Removed as align-items handles height matching */
+}
+
+#search-form button[type="submit"] {
+    flex-shrink: 0; /* Prevent button from shrinking */
+    margin: 0; /* Ensure no margins */
+    box-sizing: border-box; /* Ensure padding/border included in width/height */
+    /* align-self is handled by parent align-items: center */
+}
+
+/* Autocomplete Styles */
+.autocomplete-suggestions {
+    border: 1px solid var(--border-color);
+    border-top: none;
+    max-height: 250px;
+    overflow-y: auto;
+    position: absolute;
+    background-color: var(--background-color);
+    z-index: 1000;
+    width: 100%;
+    left: 0;
+    top: 100%; /* Position directly below the input's wrapper if needed */
+    box-sizing: border-box;
+    border-radius: 0 0 var(--border-radius-md) var(--border-radius-md);
+    box-shadow: 0 4px 8px var(--shadow-color);
+    display: none;
+}
+
+.autocomplete-suggestion {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    cursor: pointer;
+    border-bottom: 1px solid var(--medium-light-grey);
+    font-size: 0.95rem;
+    transition: background-color 0.15s ease;
+}
+.autocomplete-suggestion:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-suggestion:hover {
+    background-color: var(--light-grey);
+}
+
+.autocomplete-active {
+    background-color: var(--primary-color) !important;
+    color: white !important;
+}
+
+/* Submit Button */
+button[type="submit"] {
+    padding: var(--spacing-md) var(--spacing-xl);
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    /* align-self: center; <- Removed, handled by flex container */
+    /* margin-top: var(--spacing-sm); <- Removed, handled by flex container */
+}
+
+/* Removed the .search-form-inline block as styles are now applied directly via #search-form ID */
+
+/* Screen Reader Only Class */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* Section Divider */
+.section-divider {
+    margin-top: 25px;
+    margin-bottom: 20px;
+    border: 0;
+    border-top: 1px solid #eee;
+}
+
+/* Adjustments for results section */
+#results h3 {
+    margin-top: 0; /* Reduce top margin if it follows a divider */
+}
+
+button[type="submit"]:hover {
+    background-color: var(--primary-hover-color);
+    transform: translateY(-1px); /* Subtle lift */
+}
+
+button[type="submit"]:active {
+    transform: translateY(0); /* Press down effect */
+}
+
+
+/* Results Area */
+#results h2 {
+    color: var(--dark-grey);
+    margin-top: 0;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    font-size: 1.5rem; /* Slightly larger heading */
+    font-weight: 600;
+}
+
+/* Style for company logo */
+.company-logo {
+    max-height: 40px; /* Keep size */
+    vertical-align: middle;
+    margin-right: var(--spacing-md);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--light-grey); /* Add subtle background if transparent */
+    padding: var(--spacing-xs);
+    border: 1px solid var(--border-color);
+}
+
+/* Style for the stock chart image */
+.stock-chart-image {
+    width: 100%;
+    max-width: 700px; /* Limit max width for large screens */
+    height: auto;
+    border: 1px solid var(--border-color);
+    display: block;
+    margin: var(--spacing-lg) auto; /* Center with margin */
+    border-radius: var(--border-radius-md);
+    box-shadow: 0 3px 8px var(--shadow-color);
+}
+
+#results p {
+    line-height: 1.7;
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-color); /* Use main text color */
+}
+
+#results p strong {
+    color: var(--dark-grey); /* Darker label */
+    font-weight: 600;
+    margin-right: var(--spacing-sm);
+}
+
+#results ul {
+    list-style: none;
+    padding-left: 0;
+    margin-top: var(--spacing-lg);
+}
+
+#results li {
+    margin-bottom: var(--spacing-sm);
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--medium-light-grey); /* Lighter separator */
+}
+#results li:last-child {
+    border-bottom: none;
+}
+
+#results li strong {
+     display: inline-block;
+     min-width: 180px; /* Slightly more space for alignment */
+     font-weight: 500; /* Less heavy */
+     color: var(--secondary-color); /* Grey label */
+}
+
+
+/* Error Message */
+.error {
+    color: var(--error-text);
+    background-color: var(--error-bg);
+    border: 1px solid var(--error-border);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--border-radius-md);
+    margin-bottom: var(--spacing-lg);
+    text-align: center;
+    width: 100%;
+    max-width: 900px; /* Match content width */
+    box-sizing: border-box;
+}
+
+
+/* Results Table (Scan Page) Hover Effect */
+.results-table tbody tr:hover {
+    background-color: var(--medium-light-grey); /* Use slightly darker hover */
+    cursor: pointer;
+}
+
+/* Add this if you don't have it - for tables on scan page */
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: var(--spacing-lg);
+    background-color: var(--container-bg); /* Ensure table bg matches */
+    border-radius: var(--border-radius-md); /* Rounded corners for table */
+    overflow: hidden; /* Clip corners */
+    box-shadow: 0 5px 15px var(--shadow-color); /* Add shadow */
+    border: 1px solid var(--border-color);
+}
+
+.results-table th,
+.results-table td {
+    padding: var(--spacing-md);
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.results-table td {
+     border-bottom: 1px solid var(--medium-light-grey); /* Lighter internal borders */
+}
+
+
+.results-table th {
+    background-color: var(--light-grey);
+    font-weight: 600;
+    color: var(--secondary-color);
+    border-bottom-width: 2px; /* Thicker border below header */
+    border-color: var(--border-color);
+}
+
+.results-table tr:last-child td {
+    border-bottom: none; /* Remove border on last row */
+}
+
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    body {
+        padding: var(--spacing-lg) var(--spacing-sm);
+    }
+
+    h1 {
+        font-size: 1.8rem;
+    }
+
+    .main-nav, .content-container, .results-table {
+        max-width: 100%;
+        padding-left: var(--spacing-md);
+        padding-right: var(--spacing-md);
+    }
+
+     .content-container {
+        padding: var(--spacing-lg);
+    }
+
+
+    #results h2 {
+        font-size: 1.3rem;
+    }
+
+    #results li strong {
+        min-width: 120px; /* Adjust alignment for smaller screens */
+    }
+
+    .results-table th,
+    .results-table td {
+        padding: var(--spacing-sm); /* Reduce padding on smaller screens */
+    }
+}
+
+@media (max-width: 480px) {
+    .main-nav ul {
+        flex-direction: column; /* Stack nav items */
+        align-items: center;
+    }
+    .main-nav li {
+        margin: var(--spacing-sm) 0;
+    }
+
+    button[type="submit"] {
+        width: 100%; /* Full width button */
+    }
+
+    #results li strong {
+        min-width: 100px; /* Further adjust alignment */
+        display: block; /* Stack label and value */
+        margin-bottom: var(--spacing-xs);
+    }
+
+    .results-table {
+        font-size: 0.9rem; /* Slightly smaller font for tables */
+    }
+     .results-table th,
+    .results-table td {
+        padding: var(--spacing-xs);
+    }
+}
