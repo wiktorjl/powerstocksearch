@@ -64,4 +64,16 @@ CREATE TABLE splits
     CONSTRAINT splits_pkey PRIMARY KEY (symbol_id, split_date)
 );
 
+-- Create table to store the latest reversal scan results
+CREATE TABLE reversal_scan_results (
+    symbol TEXT PRIMARY KEY REFERENCES symbols(symbol), -- Use symbol directly as PK and FK
+    last_close DECIMAL(18,6),
+    last_volume BIGINT,
+    sma150 DECIMAL(18,6),
+    sma150_slope_norm DECIMAL(18,8), -- Increased precision for slope
+    rsi14 DECIMAL(18,6),
+    last_date DATE,
+    scan_timestamp TIMESTAMPTZ NOT NULL -- Timestamp of when the scan was run
+);
+
 commit;

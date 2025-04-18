@@ -20,6 +20,7 @@
         <ul>
             <li><a href="{{ url_for('search_page') }}" {% if active_page == 'search' %}class="active"{% endif %}>Search</a></li>
             <li><a href="{{ url_for('scan_page') }}" {% if active_page == 'scan' %}class="active"{% endif %}>Scan</a></li>
+            <li><a href="{{ url_for('reversal_scan_page') }}" {% if active_page == 'reversal_scan' %}class="active"{% endif %}>Reversal Scan</a></li>
             {# Theme switch removed from nav #}
         </ul>
     </nav>

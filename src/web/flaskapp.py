@@ -23,6 +23,9 @@ from src.feature_engineering.support_resistance import identify_support_resistan
 from src.config import AlgorithmConfig
 from src.services.openai_service import get_company_summary, get_economic_variables, get_economic_analysis # Import the new services
 from src.analysis.economic_influence_analyzer import EconomicInfluenceAnalyzer # Import the analyzer
+from src.screening.reversal_screener import DEFAULT_CONFIG # Screener function no longer called directly here
+# Import the new function to fetch results from the DB
+from src.database.data_provider import fetch_reversal_scan_results_db
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -867,6 +870,49 @@ def scan_page():
         active_page='scan' # Indicate current page
     )
 # Removed the stock_detail_page route as historical data is now shown on the search page
+
+
+@app.route('/scan/reversal', methods=['GET'])
+def reversal_scan_page():
+    """ Displays the latest pre-calculated reversal scan results from the database. """
+    logger.info("Received request for Reversal Scan results page.")
+    results = None
+    error = None
+    scan_timestamp = None
+
+    try:
+        # Fetch results directly from the dedicated table
+        results = fetch_reversal_scan_results_db()
+
+        if results is None:
+            error = "Could not retrieve reversal scan results from the database. The background job might have failed or not run yet."
+            logger.error("fetch_reversal_scan_results_db returned None.")
+        elif not results:
+            error = "No stocks matched the reversal criteria in the latest scan."
+            logger.info("No results found in reversal_scan_results table.")
+            # Attempt to get the timestamp even if results are empty (table might exist but be empty)
+            # This requires a separate query or modification to fetch_reversal_scan_results_db
+            # For simplicity, we'll only show timestamp if results exist.
+        else:
+            # Extract the timestamp from the first result (assuming all rows have the same)
+            scan_timestamp = results[0].get('scan_timestamp')
+            logger.info(f"Successfully retrieved {len(results)} reversal scan results.")
+
+    except Exception as e:
+        logger.exception(f"Error fetching or processing reversal scan results: {e}")
+        error = "An unexpected error occurred while retrieving scan results."
+        results = None # Ensure results are None on error
+
+    # Render the results template
+    return render_template(
+        'reversal_scan_results.html',
+        results=results,
+        error=error,
+        scan_timestamp=scan_timestamp, # Pass timestamp to template
+        active_page='reversal_scan' # For navbar highlighting
+    )
+
+
 
 @app.route('/set_theme', methods=['POST'])
 def set_theme():

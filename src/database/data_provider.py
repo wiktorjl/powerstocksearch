@@ -357,50 +357,128 @@ import pandas as pd # Ensure pandas is imported if not already at the top
 
 def fetch_ohlc_data_for_symbols_db(symbols: list, start_date=None, end_date=None):
     """
-    Fetch split-adjusted OHLC data for a list of symbols from the database
-    with optional date range. Returns data structured for RRG analysis.
+    Fetch split-adjusted OHLCV data for a list of symbols efficiently from the database.
 
     Args:
-        symbols (list): A list of stock ticker symbols (e.g., ['SPY', 'XLK', 'XLE']).
+        symbols (list): A list of stock ticker symbols.
         start_date (str, optional): Start date in 'YYYY-MM-DD' format.
         end_date (str, optional): End date in 'YYYY-MM-DD' format.
 
     Returns:
-        pandas.DataFrame: A DataFrame containing the 'close' prices for all requested
-                          symbols, indexed by date, with symbols as columns.
-                          Returns None if fetch fails for any symbol or no data found.
-                          Returns an empty DataFrame if the input list is empty.
+        dict: A dictionary mapping each symbol to its pandas DataFrame containing
+              split-adjusted OHLCV data (timestamp index, open, high, low, close, volume columns).
+              Returns None if the database connection fails.
+              Returns an empty dict if the input list is empty or no data is found for any symbol.
+              Symbols for which data fetching or adjustment fails will be omitted from the result.
     """
     if not symbols:
         logger.warning("fetch_ohlc_data_for_symbols_db called with empty symbols list.")
-        return pd.DataFrame() # Return empty DataFrame for empty input
+        return {}
 
-    all_data = {}
-    logger.info(f"Fetching OHLC data for multiple symbols: {symbols}")
-
-    # Fetch data for each symbol individually using the existing function
-    for symbol in symbols:
-        symbol_df = fetch_ohlc_data_db(symbol, start_date, end_date)
-        if symbol_df is None or symbol_df.empty:
-            logger.error(f"Failed to fetch or no data found for symbol: {symbol}. Aborting multi-symbol fetch.")
-            return None # Return None if any symbol fails
-        # Ensure timestamp is the index and is datetime type
-        symbol_df['timestamp'] = pd.to_datetime(symbol_df['timestamp'])
-        symbol_df = symbol_df.set_index('timestamp')
-        # Keep only the 'close' price for RRG calculations
-        all_data[symbol] = symbol_df['close']
-        logger.info(f"Successfully fetched and processed data for {symbol}")
-
-    # Combine the 'close' price Series into a single DataFrame
-    try:
-        combined_df = pd.concat(all_data, axis=1)
-        # Optional: Forward fill missing values if needed, though RRG might handle NaNs
-        # combined_df = combined_df.ffill()
-        logger.info(f"Successfully combined data for symbols: {symbols}")
-        return combined_df
-    except Exception as e:
-        logger.error(f"Error combining data for symbols {symbols}: {e}")
+    connection = get_db_connection()
+    if not connection:
         return None
+
+    results_map = {}
+    symbol_id_map = {} # To map symbol back from symbol_id
+
+    try:
+        # 1. Fetch raw OHLCV data for all requested symbols in one query
+        query = """
+        SELECT s.symbol, s.symbol_id, o.timestamp, o.open, o.high, o.low, o.close, o.volume
+        FROM ohlc_data o
+        JOIN symbols s ON o.symbol_id = s.symbol_id
+        WHERE s.symbol = ANY(%s) -- Use ANY for list comparison
+        """
+        params = [symbols]
+
+        if start_date:
+            query += " AND o.timestamp >= %s"
+            params.append(start_date)
+        if end_date:
+            query += " AND o.timestamp <= %s"
+            params.append(end_date)
+
+        query += " ORDER BY s.symbol, o.timestamp;" # Order for easier processing
+
+        logger.info(f"Fetching raw OHLCV data for {len(symbols)} symbols...")
+        all_ohlcv_df = pd.read_sql_query(query, connection, params=params)
+
+        if all_ohlcv_df.empty:
+            logger.warning(f"No raw OHLCV data found for any of the requested symbols: {symbols}")
+            connection.close()
+            return {}
+
+        logger.info(f"Retrieved {len(all_ohlcv_df)} total OHLCV records. Processing splits...")
+        all_ohlcv_df['timestamp'] = pd.to_datetime(all_ohlcv_df['timestamp'], utc=True)
+
+        # 2. Fetch all relevant splits in one query
+        symbol_ids = all_ohlcv_df['symbol_id'].unique().tolist()
+        splits_query = """
+        SELECT symbol_id, split_date, ratio
+        FROM splits
+        WHERE symbol_id = ANY(%s)
+        ORDER BY symbol_id, split_date DESC;
+        """
+        all_splits_df = pd.read_sql_query(splits_query, connection, params=[symbol_ids])
+        connection.close() # Close connection after DB queries
+
+        if not all_splits_df.empty:
+             all_splits_df['split_date'] = pd.to_datetime(all_splits_df['split_date'], utc=True)
+             logger.info(f"Found {len(all_splits_df)} total split records for {len(symbol_ids)} symbols.")
+        else:
+             logger.info("No split records found for the fetched symbols.")
+
+
+        # 3. Process data per symbol (split adjustment)
+        for symbol_id in symbol_ids:
+            symbol_df = all_ohlcv_df[all_ohlcv_df['symbol_id'] == symbol_id].copy()
+            if symbol_df.empty:
+                continue
+
+            symbol = symbol_df['symbol'].iloc[0] # Get symbol name
+            symbol_id_map[symbol_id] = symbol # Store mapping
+
+            symbol_splits = all_splits_df[all_splits_df['symbol_id'] == symbol_id]
+
+            if not symbol_splits.empty:
+                logger.debug(f"Applying {len(symbol_splits)} splits for {symbol} (ID: {symbol_id})...")
+                # Apply splits (same logic as single fetch, but on the symbol's subset)
+                for _, split in symbol_splits.iterrows():
+                    split_date = split['split_date']
+                    adj_factor = float(split['ratio'])
+                    if adj_factor <= 0: continue
+
+                    mask = symbol_df['timestamp'] < split_date
+                    if mask.any():
+                        price_cols = ['open', 'high', 'low', 'close']
+                        symbol_df.loc[mask, price_cols] *= adj_factor
+                        if adj_factor != 0:
+                            volume_factor = 1.0 / adj_factor
+                            symbol_df['volume'] = pd.to_numeric(symbol_df['volume'], errors='coerce').fillna(0)
+                            new_volume = (symbol_df.loc[mask, 'volume'] * volume_factor).round().astype(int)
+                            symbol_df.loc[mask, 'volume'] = new_volume
+            else:
+                 logger.debug(f"No splits found for {symbol}.")
+
+
+            # Prepare final DataFrame for this symbol
+            symbol_df = symbol_df.set_index('timestamp')
+            # Select and rename columns to match screener expectations (Capitalized)
+            final_df = symbol_df[['open', 'high', 'low', 'close', 'volume']].copy()
+            final_df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+
+            results_map[symbol] = final_df
+            logger.debug(f"Finished processing data for {symbol}.")
+
+        logger.info(f"Successfully processed and adjusted data for {len(results_map)} symbols.")
+        return results_map
+
+    except Exception as e:
+        logger.exception(f"Error fetching or processing multi-symbol OHLCV data: {e}")
+        if connection:
+            connection.close()
+        return None # Indicate failure
 
 
 
@@ -562,6 +640,56 @@ def scan_stocks(sector=None, close_op=None, close_val=None, vol_op=None, vol_val
         if connection:
             connection.close()
         return None, 0, f"Error scanning stocks: {e}"
+
+
+def fetch_reversal_scan_results_db():
+    """
+    Fetch all results from the reversal_scan_results table.
+
+    Returns:
+        list: A list of dictionaries, each representing a qualified stock
+              from the last scan, ordered by symbol. Returns None if fetch fails.
+    """
+    connection = get_db_connection()
+    if not connection:
+        return None
+
+    query = """
+    SELECT
+        symbol,
+        last_close,
+        last_volume,
+        sma150,
+        sma150_slope_norm,
+        rsi14,
+        last_date,
+        scan_timestamp
+    FROM reversal_scan_results
+    ORDER BY symbol;
+    """
+
+    try:
+        cursor = connection.cursor()
+        logger.info("Fetching results from reversal_scan_results table")
+        cursor.execute(query)
+        results = cursor.fetchall()
+
+        # Convert results to list of dicts
+        columns = [desc[0] for desc in cursor.description]
+        scan_results = [dict(zip(columns, row)) for row in results]
+
+        cursor.close()
+        connection.close()
+
+        logger.info(f"Retrieved {len(scan_results)} results from reversal_scan_results")
+        return scan_results
+
+    except Exception as e:
+        logger.error(f"Error fetching reversal scan results: {e}")
+        if connection:
+            connection.close()
+        return None
+
 
 # Potential future expansion:
 # def fetch_ohlc_data_api(symbol, start_date=None, end_date=None):

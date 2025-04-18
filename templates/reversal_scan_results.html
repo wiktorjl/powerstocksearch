@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reversal Scan Results</title> {# Updated Title #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Detached Theme Toggle -->
+    <div class="theme-toggle-container">
+        <label class="theme-toggle" for="theme-checkbox">
+            <input type="checkbox" id="theme-checkbox" />
+            <span class="icon sun"></span> <!-- Sun icon -->
+            <span class="icon moon"></span> <!-- Moon icon -->
+        </label>
+    </div>
+    <nav class="main-nav">
+        <ul>
+            <li><a href="{{ url_for('search_page') }}" {% if active_page == 'search' %}class="active"{% endif %}>Search</a></li>
+            <li><a href="{{ url_for('scan_page') }}" {% if active_page == 'scan' %}class="active"{% endif %}>Scan</a></li>
+            <li><a href="{{ url_for('reversal_scan_page') }}" {% if active_page == 'reversal_scan' %}class="active"{% endif %}>Reversal Scan</a></li> {# Ensure this link is present and active state works #}
+            <li><a href="{{ url_for('rrg_page') }}" {% if active_page == 'rrg' %}class="active"{% endif %}>RRG</a></li>
+        </ul>
+    </nav>
+
+    {# --- Reversal Scan Results Content Start --- #}
+    <div class="container mt-4 content-container"> {# Added content-container class #}
+        <h1 class="mb-4">Stock Reversal Scan Results</h1>
+
+        {# Include flash messages partial if needed, ensure _flash_messages.html exists #}
+        {% include '_flash_messages.html' ignore missing %}
+
+        {% if error %}
+            <div class="alert alert-danger" role="alert">
+                Error running scan: {{ error }}
+            </div>
+        {% elif results is not none %}
+            {% if results %}
+                <p>Found {{ results|length }} stock(s) matching the reversal criteria.</p>
+                {% if scan_timestamp %}
+                <p><small>Scan performed on: {{ scan_timestamp | date(format='%Y-%m-%d %H:%M:%S %Z') }}</small></p>
+                {% endif %}
+                <div class="table-responsive">
+                    {# Use results-table class for consistency if styled #}
+                    <table class="table table-striped table-hover table-sm results-table">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Last Close</th>
+                                <th>Last Volume</th>
+                                <th>SMA(150)</th>
+                                <th>SMA(150) Slope (Norm.)</th>
+                                <th>RSI(14)</th>
+                                <th>Last Date</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stock in results %}
+                            {# Add data-symbol for potential JS interaction #}
+                            <tr data-symbol="{{ stock.symbol }}">
+                                <td>
+                                    {# Link symbol to search page #}
+                                    <a href="{{ url_for('search_page', symbol=stock.symbol) }}">{{ stock.symbol }}</a>
+                                </td>
+                                <td>{{ stock.last_close | currency }}</td>
+                                <td>{{ stock.last_volume | large_number }}</td>
+                                <td>{{ stock.sma150 | currency }}</td>
+                                <td>{{ stock.sma150_slope_norm | indicator }}</td> {# Use indicator filter #}
+                                <td>{{ stock.rsi14 | indicator }}</td> {# Use indicator filter #}
+                                <td>{{ stock.last_date | date }}</td>
+                                <td>
+                                    <a href="{{ url_for('search_page', symbol=stock.symbol) }}" class="btn btn-sm btn-primary">Details</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="alert alert-info" role="alert">
+                    No stocks found matching the reversal criteria.
+                </div>
+            {% endif %}
+        {% else %}
+             {# Initial state or unexpected case where results is None and no error #}
+             <div class="alert alert-secondary" role="alert">
+                The scan has not been run or encountered an issue loading results.
+             </div>
+        {% endif %}
+
+        {# Removed Back button as navigation is handled by navbar #}
+        {# <a href="{{ url_for('scan_page') }}" class="btn btn-secondary mt-3">Back to Scan Filters</a> #}
+
+    </div>
+    {# --- Reversal Scan Results Content End --- #}
+
+    <footer>
+        <p>&copy; 2025 PowerStockSearch. All rights reserved. Data provided for informational purposes only.</p>
+    </footer>
+
+    <script>
+        // Theme Switch Logic (Copied from scan.html)
+        document.addEventListener('DOMContentLoaded', function() {
+            const themeCheckbox = document.getElementById('theme-checkbox');
+            const currentTheme = localStorage.getItem('theme') ? localStorage.getItem('theme') : null;
+            const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
+            function setTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+                if (themeCheckbox) {
+                    themeCheckbox.checked = (theme === 'dark');
+                }
+                console.log(`Theme set to ${theme} on reversal scan results page.`);
+            }
+
+            // Initialize theme based on localStorage or system preference
+            if (currentTheme) {
+                setTheme(currentTheme);
+            } else if (prefersDarkScheme.matches) {
+                setTheme('dark');
+            } else {
+                setTheme('light'); // Default to light
+            }
+
+            // Listener for theme switch toggle
+            if (themeCheckbox) {
+                themeCheckbox.addEventListener('change', function() {
+                    const newTheme = this.checked ? 'dark' : 'light';
+                    setTheme(newTheme);
+                    // Optionally send theme to server if needed for future requests from this page
+                    // fetch('/set_theme', { method: 'POST', ... });
+                });
+            }
+
+            // Listener for changes in system preference
+            prefersDarkScheme.addListener(e => {
+                if (!localStorage.getItem('theme')) {
+                     if (e.matches) {
+                        setTheme('dark');
+                    } else {
+                        setTheme('light');
+                    }
+                }
+            });
+
+            // Add click listener to table rows if needed (similar to scan.html)
+            const tableBody = document.querySelector('.results-table tbody');
+            if (tableBody) {
+                tableBody.addEventListener('click', function(event) {
+                    // Avoid triggering row click if the 'Details' button was clicked
+                    if (event.target.tagName === 'A' || event.target.closest('a')) {
+                        return;
+                    }
+
+                    const row = event.target.closest('tr');
+                    if (row && row.dataset.symbol) {
+                        const symbol = row.dataset.symbol;
+                        const currentTheme = localStorage.getItem('theme') || 'light';
+                        // Redirect to the search page with the symbol and theme
+                        window.location.href = `/search?symbol=${encodeURIComponent(symbol)}&theme=${currentTheme}`;
+                    }
+                });
+            }
+
+        }); // End of DOMContentLoaded listener
+    </script>
+    <!-- HTMX Script (Include if any HTMX features are used on this page, otherwise optional) -->
+    <!-- <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script> -->
+
+</body>
+</html>
