@@ -353,6 +353,57 @@ def fetch_latest_indicators_db(symbol_id):
         return None
 
 
+import pandas as pd # Ensure pandas is imported if not already at the top
+
+def fetch_ohlc_data_for_symbols_db(symbols: list, start_date=None, end_date=None):
+    """
+    Fetch split-adjusted OHLC data for a list of symbols from the database
+    with optional date range. Returns data structured for RRG analysis.
+
+    Args:
+        symbols (list): A list of stock ticker symbols (e.g., ['SPY', 'XLK', 'XLE']).
+        start_date (str, optional): Start date in 'YYYY-MM-DD' format.
+        end_date (str, optional): End date in 'YYYY-MM-DD' format.
+
+    Returns:
+        pandas.DataFrame: A DataFrame containing the 'close' prices for all requested
+                          symbols, indexed by date, with symbols as columns.
+                          Returns None if fetch fails for any symbol or no data found.
+                          Returns an empty DataFrame if the input list is empty.
+    """
+    if not symbols:
+        logger.warning("fetch_ohlc_data_for_symbols_db called with empty symbols list.")
+        return pd.DataFrame() # Return empty DataFrame for empty input
+
+    all_data = {}
+    logger.info(f"Fetching OHLC data for multiple symbols: {symbols}")
+
+    # Fetch data for each symbol individually using the existing function
+    for symbol in symbols:
+        symbol_df = fetch_ohlc_data_db(symbol, start_date, end_date)
+        if symbol_df is None or symbol_df.empty:
+            logger.error(f"Failed to fetch or no data found for symbol: {symbol}. Aborting multi-symbol fetch.")
+            return None # Return None if any symbol fails
+        # Ensure timestamp is the index and is datetime type
+        symbol_df['timestamp'] = pd.to_datetime(symbol_df['timestamp'])
+        symbol_df = symbol_df.set_index('timestamp')
+        # Keep only the 'close' price for RRG calculations
+        all_data[symbol] = symbol_df['close']
+        logger.info(f"Successfully fetched and processed data for {symbol}")
+
+    # Combine the 'close' price Series into a single DataFrame
+    try:
+        combined_df = pd.concat(all_data, axis=1)
+        # Optional: Forward fill missing values if needed, though RRG might handle NaNs
+        # combined_df = combined_df.ffill()
+        logger.info(f"Successfully combined data for symbols: {symbols}")
+        return combined_df
+    except Exception as e:
+        logger.error(f"Error combining data for symbols {symbols}: {e}")
+        return None
+
+
+
 
 
 def get_unique_sectors():

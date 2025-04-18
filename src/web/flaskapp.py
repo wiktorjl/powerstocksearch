@@ -1,6 +1,7 @@
 import logging
+import os
 # Consolidate Flask imports
-from flask import Flask, jsonify, request, render_template, flash, session
+from flask import Flask, jsonify, request, render_template, flash, session, url_for
 import requests
 import math
 from datetime import datetime, timedelta
@@ -9,6 +10,7 @@ from src.database.data_provider import (
     list_symbols_db,
     fetch_symbol_details_db,
     fetch_ohlc_data_db,
+    fetch_ohlc_data_for_symbols_db, # Added import for multi-symbol fetch
     fetch_latest_indicators_db,
     get_unique_sectors,
     scan_stocks
@@ -16,6 +18,7 @@ from src.database.data_provider import (
 # Import the chart generation function
 from src.visualization.ohlc_plotter import generate_and_save_chart
 # Import S/R calculation and config
+from src.visualization.rrg import generate_rrg_plot # Import RRG plotter
 from src.feature_engineering.support_resistance import identify_support_resistance
 from src.config import AlgorithmConfig
 from src.services.openai_service import get_company_summary, get_economic_variables, get_economic_analysis # Import the new services
@@ -29,6 +32,15 @@ app = Flask(__name__, template_folder='../../templates', static_folder='../../st
 
 # TODO: Set a proper secret key, preferably from config/environment
 app.secret_key = 'dev-secret-key' # Add a temporary key for flash
+
+
+# --- RRG Plot Configuration ---
+RRG_STOCKS = ['GOOGL', 'AAPL', 'MSFT', 'AMZN', 'TSLA', 'META'] # Example stocks for RRG
+RRG_BENCHMARK = 'GE'
+RRG_PLOT_FILENAME = 'rrg_plot.png'
+RRG_PLOT_DIR = os.path.join(app.static_folder, 'plots') # Use app's static folder
+RRG_PLOT_PATH = os.path.join(RRG_PLOT_DIR, RRG_PLOT_FILENAME)
+# RRG_PLOT_URL removed from global scope
 
 
 # --- Custom Jinja Filters ---
@@ -869,6 +881,71 @@ def set_theme():
     else:
         logger.warning(f"Invalid theme value received: {theme}")
         return jsonify({"error": "Invalid theme value"}), 400
+
+
+
+
+@app.route('/rrg')
+def rrg_page():
+    """ Renders the Relative Rotation Graph (RRG) page. """
+    logger.info("Received request for RRG page.")
+    rrg_plot_url = None
+    error = None
+
+    try:
+        # Ensure the plot directory exists
+        os.makedirs(RRG_PLOT_DIR, exist_ok=True)
+
+        # 1. Fetch data for RRG stocks and benchmark
+        symbols_to_fetch = RRG_STOCKS + [RRG_BENCHMARK]
+        # Fetch data for the last 2 years for better EMA/momentum calculation
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365 * 2)
+        logger.info(f"Fetching data for RRG: {symbols_to_fetch} from {start_date.date()} to {end_date.date()}")
+
+        prices_df = fetch_ohlc_data_for_symbols_db(
+            symbols_to_fetch,
+            start_date=start_date.strftime('%Y-%m-%d'),
+            end_date=end_date.strftime('%Y-%m-%d')
+        )
+
+        if prices_df is None or prices_df.empty:
+            logger.error("Failed to fetch necessary data for RRG plot.")
+            error = "Could not retrieve the data needed to generate the RRG plot."
+        else:
+            logger.info(f"Successfully fetched data for {len(prices_df.columns)} symbols for RRG.")
+            # 2. Generate the RRG plot
+            # Use the defined constants and pass the fetched data
+            generated_path = generate_rrg_plot(
+                prices_df=prices_df,
+                stocks=RRG_STOCKS,
+                benchmark=RRG_BENCHMARK,
+                output_filename=RRG_PLOT_PATH,
+                tail_length=10 # Default tail length
+            )
+
+            if generated_path:
+                # Generate URL within the request context using url_for
+                rrg_plot_url = url_for('static', filename=f'plots/{RRG_PLOT_FILENAME}')
+                logger.info(f"RRG plot generated successfully: {rrg_plot_url}")
+                # Add cache-busting query parameter
+                rrg_plot_url += f"?v={datetime.now().timestamp()}"
+            else:
+                logger.error("RRG plot generation function failed.")
+                error = "Failed to generate the RRG plot image."
+
+    except Exception as e:
+        logger.exception(f"Error generating RRG page: {e}")
+        error = "An unexpected error occurred while generating the RRG page."
+
+    return render_template(
+        'rrg.html',
+        rrg_plot_url=rrg_plot_url,
+        error=error,
+        rrg_benchmark=RRG_BENCHMARK, # Pass benchmark to template
+        rrg_stocks=RRG_STOCKS,       # Pass stocks list to template
+        active_page='rrg' # For navbar highlighting
+    )
 
 
 if __name__ == '__main__':

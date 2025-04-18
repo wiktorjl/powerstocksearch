@@ -574,6 +574,23 @@ button[type="submit"]:active {
 }
 
 
+
+/* RRG Chart Container Styling */
+.chart-container {
+    width: 100%; /* Ensure container takes full width */
+    margin-bottom: var(--spacing-lg); /* Add some space below the chart */
+}
+
+.chart-container img {
+    max-width: 100%; /* Scale image width down to fit container */
+    height: auto;    /* Maintain aspect ratio */
+    display: block;  /* Remove extra space below image */
+    margin: 0 auto;  /* Center image if container is wider */
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    box-shadow: 0 3px 8px var(--shadow-color);
+}
+
 /* Filter Form Styling (scan.html) */
 .filter-form {
     display: flex;

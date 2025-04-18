@@ -20,6 +20,7 @@
         <ul>
             <li><a href="{{ url_for('search_page') }}" {% if active_page == 'search' %}class="active"{% endif %}>Search</a></li>
             <li><a href="{{ url_for('scan_page') }}" {% if active_page == 'scan' %}class="active"{% endif %}>Scan</a></li>
+            <li><a href="{{ url_for('rrg_page') }}" {% if active_page == 'rrg' %}class="active"{% endif %}>RRG</a></li>
             {# Theme switch removed from nav #}
         </ul>
     </nav>
