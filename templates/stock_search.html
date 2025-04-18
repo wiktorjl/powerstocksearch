@@ -30,7 +30,9 @@
     <!-- Removed redundant H1 title -->
 
     <div class="search-container content-container">
-        <form action="{{ url_for('search_symbol') }}" method="post" id="search-form"> <!-- Removed redundant class -->
+        {# Add hx-indicator to show the main spinner during the request #}
+        {# Point hx-indicator to the new spinner ID outside the results div and use innerHTML swap #}
+        <form action="{{ url_for('search_symbol') }}" method="post" id="search-form" hx-post="{{ url_for('search_symbol') }}" hx-target="#results" hx-swap="innerHTML" hx-indicator="#search-spinner">
             <div class="input-wrapper" style="position: relative;"> <!-- Removed margin-bottom -->
                 <label for="symbol" class="sr-only">Enter Stock Symbol:</label> <!-- Added sr-only class for accessibility, label still useful -->
                 <input type="text" id="symbol" name="symbol" placeholder="Enter Stock Symbol" value="{{ search_term or '' }}" autocomplete="off" required>
@@ -38,12 +40,20 @@
                 <input type="hidden" name="theme" id="theme-hidden-input">
                 <div id="autocomplete-list" class="autocomplete-suggestions"></div>
             </div>
-            <button type="submit">Search</button>
+            {# Add inline spinner and text span to button #}
+            <button type="submit">
+                <span class="spinner-inline"></span>
+                <span class="button-text">Search</span>
+            </button>
         </form>
     </div>
 
+    {# Add the main spinner OUTSIDE the results div #}
+    <div id="search-spinner" class="spinner"></div>
+
     {% if error or company_data %}
     <div id="results" class="content-container">
+        {# Removed spinner from here #}
         {% if error %}
             <p class="error">Error: {{ error }}</p>
         {% endif %}
@@ -488,6 +498,9 @@
         // Removed updatePaginationLinks function - theme is handled by session
 
     </script>
+
+    <!-- HTMX Script -->
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
 
     <footer>
         <p>&copy; 2025 PowerStockSearch. All rights reserved. Data provided for informational purposes only.</p>

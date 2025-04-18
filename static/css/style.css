@@ -1087,3 +1087,73 @@ button[type="submit"]:active {
 [data-theme="dark"] .trend-summary.trend-flat .trend-icon {
     color: #adb5bd; /* Lighter grey icon */
 }
+
+
+/* --- Spinner Styles --- */
+.spinner {
+    border: 4px solid var(--medium-light-grey); /* Light grey border */
+    border-top: 4px solid var(--primary-color); /* Blue top border */
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+
+/* Class to make spinner visible initially */
+.spinner-visible {
+    display: block !important; /* Add !important */
+}
+
+    animation: spin 1s linear infinite;
+    margin: var(--spacing-lg) auto; /* Center and add space */
+    display: none; /* Hidden by default */
+}
+
+/* Dark theme adjustment for spinner border */
+[data-theme="dark"] .spinner {
+    border-color: var(--medium-light-grey);
+    border-top-color: var(--primary-color);
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* HTMX Indicator Styling */
+/* Class added by HTMX to the element triggering the request */
+/* Target the spinner element when it *itself* has the htmx-request class */
+.spinner.htmx-request {
+    display: block !important; /* Add !important */
+}
+
+/* Optional: Hide content while loading */
+/* Add 'htmx-indicator' class to the spinner's container */
+/* Add 'htmx-target' class to the content area */
+/*
+.htmx-indicator {
+    opacity: 0.5; /* Example: Dim content while loading */
+/* }
+*/
+
+/* Style to hide the button text and show spinner *inside* the button */
+button.htmx-request .button-text {
+    display: none;
+}
+button.htmx-request .spinner-inline {
+    display: inline-block !important; /* Add !important */
+    width: 16px; /* Smaller spinner for button */
+    height: 16px;
+    border-width: 2px;
+    vertical-align: middle;
+    margin: 0 5px 0 0; /* Adjust spacing */
+}
+.spinner-inline {
+    display: none; /* Hidden by default */
+    border: 2px solid var(--medium-light-grey);
+    border-top: 2px solid var(--nav-text); /* Use nav text color for contrast on button */
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+[data-theme="dark"] .spinner-inline {
+     border-top-color: var(--nav-text); /* Ensure contrast */
+}
+

@@ -36,7 +36,9 @@
             </div>
         {% elif rrg_plot_url %}
             <div class="text-center mb-4 chart-container"> {# Added chart-container class #}
-                <img src="{{ rrg_plot_url }}" alt="Relative Rotation Graph" class="img-fluid rounded shadow-sm border">
+                {# Add spinner, initially visible #}
+                <div class="spinner spinner-visible" id="rrg-spinner"></div>
+                <img src="{{ rrg_plot_url }}" alt="Relative Rotation Graph" class="img-fluid rounded shadow-sm border" id="rrg-plot-image">
             </div>
             <div class="card">
                  <div class="card-body">
@@ -129,6 +131,38 @@
                 }
             }
         });
+
+        // --- RRG Spinner Logic ---
+        document.addEventListener('DOMContentLoaded', function() {
+            const rrgSpinner = document.getElementById('rrg-spinner');
+            const rrgImage = document.getElementById('rrg-plot-image');
+
+            if (rrgSpinner) {
+                if (rrgImage && rrgImage.src) { // Check if image element and src exist
+                    // Hide spinner when image loads
+                    rrgImage.onload = function() {
+                        rrgSpinner.style.display = 'none';
+                        rrgSpinner.classList.remove('spinner-visible'); // Also remove class if needed
+                    };
+                    // Hide spinner if image fails to load
+                    rrgImage.onerror = function() {
+                        console.error("RRG image failed to load.");
+                        rrgSpinner.style.display = 'none';
+                        rrgSpinner.classList.remove('spinner-visible');
+                    };
+                    // In case the image is already cached and loads instantly
+                    if (rrgImage.complete) {
+                         rrgSpinner.style.display = 'none';
+                         rrgSpinner.classList.remove('spinner-visible');
+                    }
+                } else {
+                    // If no image element/src, hide spinner immediately
+                    rrgSpinner.style.display = 'none';
+                    rrgSpinner.classList.remove('spinner-visible');
+                }
+            }
+        });
+        // --- End RRG Spinner Logic ---
 
     </script>
 

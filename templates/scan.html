@@ -41,7 +41,9 @@
 
     {# Use search-container class for consistency #}
     <div class="search-container content-container">
-        <form action="{{ url_for('scan_page') }}" method="post" class="filter-form"> {# Keep filter-form class for potential specific styling #}
+        {# Add HTMX attributes and indicator #}
+        {# Point hx-indicator to the new spinner ID outside the results div and use innerHTML swap #}
+        <form action="{{ url_for('scan_page') }}" method="post" class="filter-form" hx-post="{{ url_for('scan_page') }}" hx-target="#results" hx-swap="innerHTML" hx-indicator="#scan-spinner">
             <div class="filter-group">
                 <label for="sector">Sector:</label>
                 <select id="sector" name="sector">
@@ -78,13 +80,21 @@
                 <input type="number" step="1" id="vol_val" name="vol_val" placeholder="Value" value="{{ form_data.vol_val or '' }}">
             </div>
 
-            <button type="submit">Scan</button>
+            {# Add inline spinner and text span to button #}
+            <button type="submit">
+                <span class="spinner-inline"></span>
+                <span class="button-text">Scan</span>
+            </button>
         </form>
     </div>
+
+    {# Add the main spinner OUTSIDE the results div #}
+    <div id="scan-spinner" class="spinner"></div>
 
     {# Use results id for consistency #}
     {% if error or results is not none %}
     <div id="results" class="content-container">
+         {# Removed spinner from here #}
         {# Moved error display inside results div #}
         {% if error %}
             <p class="error">Error: {{ error }}</p> {# Assuming .error class is styled in css #}
@@ -243,6 +253,9 @@
 
         }); // End of DOMContentLoaded listener
     </script>
+    <!-- HTMX Script -->
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+
 
     <footer>
         <p>&copy; 2025 PowerStockSearch. All rights reserved. Data provided for informational purposes only.</p>
