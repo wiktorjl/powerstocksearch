@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relative Rotation Graph (RRG)</title> {# Changed title #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Detached Theme Toggle -->
+    <div class="theme-toggle-container">
+        <label class="theme-toggle" for="theme-checkbox">
+            <input type="checkbox" id="theme-checkbox" />
+            <span class="icon sun"></span> <!-- Sun icon -->
+            <span class="icon moon"></span> <!-- Moon icon -->
+        </label>
+    </div>
+    <nav class="main-nav">
+        <ul>
+            <li><a href="{{ url_for('search_page') }}" {% if active_page == 'search' %}class="active"{% endif %}>Search</a></li>
+            <li><a href="{{ url_for('scan_page') }}" {% if active_page == 'scan' %}class="active"{% endif %}>Scan</a></li>
+            <li><a href="{{ url_for('rrg_page') }}" {% if active_page == 'rrg' %}class="active"{% endif %}>RRG</a></li> {# Ensure RRG link is present #}
+        </ul>
+    </nav>
+
+    {# --- RRG Page Specific Content Start --- #}
+    <div class="container mt-4 content-container"> {# Added content-container class #}
+        <h1 class="mb-4">Relative Rotation Graph (RRG)</h1>
+
+        {# Include flash messages if used (Optional, remove if not using flash for this page) #}
+        {# {% include '_flash_messages.html' %} #}
+
+        {% if error %}
+            <div class="alert alert-danger" role="alert">
+                <strong>Error:</strong> {{ error }}
+            </div>
+        {% elif rrg_plot_url %}
+            <div class="text-center mb-4 chart-container"> {# Added chart-container class #}
+                <img src="{{ rrg_plot_url }}" alt="Relative Rotation Graph" class="img-fluid rounded shadow-sm border">
+            </div>
+            <div class="card">
+                 <div class="card-body">
+                    <h5 class="card-title">Understanding the RRG</h5>
+                    <p class="card-text">This graph plots securities based on their relative strength (vs. a benchmark, horizontal axis) and the momentum of that relative strength (vertical axis). It helps visualize cyclical trends between different assets or sectors.</p>
+                    <p class="card-text small text-muted">
+                        Benchmark: <strong>{{ rrg_benchmark }}</strong> | Sectors: <strong>{{ rrg_stocks|join(', ') }}</strong>
+                    </p>
+                    <hr>
+                    <ul class="list-group list-group-flush small">
+                        <li class="list-group-item"><span class="badge bg-success me-2">Leading</span> (Top-Right): Strong relative strength & strong relative momentum. Outperforming and accelerating.</li>
+                        <li class="list-group-item"><span class="badge bg-warning text-dark me-2">Weakening</span> (Bottom-Right): Strong relative strength but weakening relative momentum. Still outperforming, but losing steam.</li>
+                        <li class="list-group-item"><span class="badge bg-danger me-2">Lagging</span> (Bottom-Left): Weak relative strength & weak relative momentum. Underperforming and decelerating.</li>
+                        <li class="list-group-item"><span class="badge bg-info me-2">Improving</span> (Top-Left): Weak relative strength but improving relative momentum. Still underperforming, but gaining steam.</li>
+                    </ul>
+                </div>
+            </div>
+        {% else %}
+            <div class="alert alert-warning" role="alert">
+                The RRG plot is currently unavailable. It might be generating or an error occurred. Please try refreshing later or check server logs.
+            </div>
+        {% endif %}
+
+    </div>
+    {# --- RRG Page Specific Content End --- #}
+
+    <script>
+        // Theme Switch Logic (Copied from stock_search.html)
+        const themeCheckbox = document.getElementById('theme-checkbox');
+        const currentTheme = localStorage.getItem('theme') ? localStorage.getItem('theme') : null;
+        const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
+        function setTheme(theme, updateServer = false) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            if (themeCheckbox) { // Check if checkbox exists on this page
+                 themeCheckbox.checked = (theme === 'dark');
+            }
+
+            // No chart image to update directly on this page
+
+            if (updateServer) {
+                fetch('/set_theme', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ theme: theme })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Server responded with status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        // Reload the page to reflect potential theme changes server-side if needed
+                        // For RRG, reload might not be strictly necessary unless plot generation depends on theme
+                        // window.location.reload();
+                        console.log('Theme updated on server:', data.theme);
+                    } else {
+                        console.error('Failed to update theme on server:', data.error || 'Unknown error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error sending theme update to server:', error);
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const initialTheme = localStorage.getItem('theme') ? localStorage.getItem('theme') : (prefersDarkScheme.matches ? 'dark' : 'light');
+            setTheme(initialTheme, false);
+        });
+
+        if (themeCheckbox) {
+            themeCheckbox.addEventListener('change', function() {
+                const newTheme = this.checked ? 'dark' : 'light';
+                setTheme(newTheme, true);
+            });
+        }
+
+        prefersDarkScheme.addListener(e => {
+            if (!localStorage.getItem('theme')) {
+                 if (e.matches) {
+                     setTheme('dark', true);
+                 } else {
+                     setTheme('light', true);
+                }
+            }
+        });
+
+    </script>
+
+    <footer>
+        <p>&copy; 2025 PowerStockSearch. All rights reserved. Data provided for informational purposes only.</p>
+    </footer>
+</body>
+</html>
