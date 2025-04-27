@@ -1,23 +1,27 @@
-# Git
-.git
-.gitignore
-
-# Python virtual environment
-.venv
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# IDE/Editor specific
-.vscode/
-.idea/
-
-# Environment variables
-.env
-
-# Data (assuming it's large or generated/mounted at runtime)
-data/
-
-# Test files
-tests/
+**/__pycache__
+**/.venv
+**/.classpath
+**/.dockerignore
+**/.env
+**/.git
+**/.gitignore
+**/.project
+**/.settings
+**/.toolstarget
+**/.vs
+**/.vscode
+**/*.*proj.user
+**/*.dbmdl
+**/*.jfm
+**/bin
+**/charts
+**/docker-compose*
+**/compose*
+**/Dockerfile*
+**/node_modules
+**/npm-debug.log
+**/obj
+**/secrets.dev.yaml
+**/values.dev.yaml
+LICENSE
+README.md

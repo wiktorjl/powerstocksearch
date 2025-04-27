@@ -1,0 +1,27 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/docker-existing-dockerfile
+{
+	"name": "Pricepirate Dev Container",
+    "image": "mcr.microsoft.com/devcontainers/base:debian",
+	"postCreateCommand": "pip install --no-cache-dir -r requirements.txt",
+	"remoteUser": "vscode",
+	"features": {
+        "github-cli": "latest"
+    },
+	"customizations": {
+        "vscode": {
+            "settings": { 
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "python.linting.enabled": true,
+                "python.linting.pylintEnabled": true,
+                "python.formatting.autopep8Enabled": true,
+                "python.formatting.blackEnabled": false,
+                "python.formatting.formatOnSave": true
+            },
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance"
+            ]
+        }
+    }
+}
