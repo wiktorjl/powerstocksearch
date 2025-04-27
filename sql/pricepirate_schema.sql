@@ -1,0 +1,349 @@
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 16.8 (Ubuntu 16.8-0ubuntu0.24.10.1)
+-- Dumped by pg_dump version 16.8 (Ubuntu 16.8-0ubuntu0.24.10.1)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: company_profile; Type: TABLE; Schema: public; Owner: pricepirate
+--
+
+CREATE TABLE public.company_profile (
+    symbol_id integer,
+    country character varying(2),
+    currency character varying(3),
+    estimate_currency character varying(3),
+    exchange character varying(100),
+    finnhub_industry character varying(100),
+    ipo date,
+    logo character varying(255),
+    market_capitalization numeric(15,2),
+    name character varying(100),
+    phone character varying(20),
+    share_outstanding numeric(10,2),
+    ticker character varying(10),
+    weburl character varying(255)
+);
+
+
+ALTER TABLE public.company_profile OWNER TO pricepirate;
+
+--
+-- Name: indicator_definitions; Type: TABLE; Schema: public; Owner: pricepirate
+--
+
+CREATE TABLE public.indicator_definitions (
+    indicator_id integer NOT NULL,
+    name text NOT NULL,
+    description text
+);
+
+
+ALTER TABLE public.indicator_definitions OWNER TO pricepirate;
+
+--
+-- Name: indicator_definitions_indicator_id_seq; Type: SEQUENCE; Schema: public; Owner: pricepirate
+--
+
+CREATE SEQUENCE public.indicator_definitions_indicator_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.indicator_definitions_indicator_id_seq OWNER TO pricepirate;
+
+--
+-- Name: indicator_definitions_indicator_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: pricepirate
+--
+
+ALTER SEQUENCE public.indicator_definitions_indicator_id_seq OWNED BY public.indicator_definitions.indicator_id;
+
+
+--
+-- Name: indicators; Type: TABLE; Schema: public; Owner: pricepirate
+--
+
+CREATE TABLE public.indicators (
+    "timestamp" timestamp with time zone NOT NULL,
+    symbol_id integer,
+    indicator_id integer,
+    value numeric(18,6)
+);
+
+
+ALTER TABLE public.indicators OWNER TO pricepirate;
+
+--
+-- Name: ohlc_data; Type: TABLE; Schema: public; Owner: pricepirate
+--
+
+CREATE TABLE public.ohlc_data (
+    "timestamp" timestamp with time zone NOT NULL,
+    symbol_id integer,
+    open numeric(18,6),
+    high numeric(18,6),
+    low numeric(18,6),
+    close numeric(18,6),
+    volume bigint
+);
+
+
+ALTER TABLE public.ohlc_data OWNER TO pricepirate;
+
+--
+-- Name: reversal_scan_results; Type: TABLE; Schema: public; Owner: pricepirate
+--
+
+CREATE TABLE public.reversal_scan_results (
+    symbol text NOT NULL,
+    last_close numeric(18,6),
+    last_volume bigint,
+    sma150 numeric(18,6),
+    sma150_slope_norm numeric(18,8),
+    rsi14 numeric(18,6),
+    last_date date,
+    scan_timestamp timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.reversal_scan_results OWNER TO pricepirate;
+
+--
+-- Name: splits; Type: TABLE; Schema: public; Owner: pricepirate
+--
+
+CREATE TABLE public.splits (
+    symbol_id integer NOT NULL,
+    split_date timestamp with time zone NOT NULL,
+    ratio numeric NOT NULL
+);
+
+
+ALTER TABLE public.splits OWNER TO pricepirate;
+
+--
+-- Name: symbols; Type: TABLE; Schema: public; Owner: pricepirate
+--
+
+CREATE TABLE public.symbols (
+    symbol_id integer NOT NULL,
+    symbol text NOT NULL
+);
+
+
+ALTER TABLE public.symbols OWNER TO pricepirate;
+
+--
+-- Name: symbols_details; Type: TABLE; Schema: public; Owner: pricepirate
+--
+
+CREATE TABLE public.symbols_details (
+    symbol_id integer NOT NULL,
+    sector text NOT NULL,
+    subsector text NOT NULL,
+    name text NOT NULL
+);
+
+
+ALTER TABLE public.symbols_details OWNER TO pricepirate;
+
+--
+-- Name: symbol_info_basic; Type: VIEW; Schema: public; Owner: pricepirate
+--
+
+CREATE VIEW public.symbol_info_basic AS
+ SELECT s.symbol_id,
+    s.symbol,
+    d.sector,
+    d.subsector,
+    d.name,
+    p.logo,
+    p.weburl,
+    p.market_capitalization,
+    o."timestamp",
+    o.open,
+    o.high,
+    o.low,
+    o.close,
+    o.volume
+   FROM (((public.symbols s
+     JOIN public.symbols_details d ON ((s.symbol_id = d.symbol_id)))
+     JOIN public.ohlc_data o ON ((o.symbol_id = s.symbol_id)))
+     JOIN public.company_profile p ON ((p.symbol_id = s.symbol_id)))
+  WHERE ((o."timestamp")::date = '2025-04-10'::date);
+
+
+ALTER VIEW public.symbol_info_basic OWNER TO pricepirate;
+
+--
+-- Name: symbols_symbol_id_seq; Type: SEQUENCE; Schema: public; Owner: pricepirate
+--
+
+CREATE SEQUENCE public.symbols_symbol_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.symbols_symbol_id_seq OWNER TO pricepirate;
+
+--
+-- Name: symbols_symbol_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: pricepirate
+--
+
+ALTER SEQUENCE public.symbols_symbol_id_seq OWNED BY public.symbols.symbol_id;
+
+
+--
+-- Name: indicator_definitions indicator_id; Type: DEFAULT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.indicator_definitions ALTER COLUMN indicator_id SET DEFAULT nextval('public.indicator_definitions_indicator_id_seq'::regclass);
+
+
+--
+-- Name: symbols symbol_id; Type: DEFAULT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.symbols ALTER COLUMN symbol_id SET DEFAULT nextval('public.symbols_symbol_id_seq'::regclass);
+
+
+--
+-- Name: indicator_definitions indicator_definitions_name_key; Type: CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.indicator_definitions
+    ADD CONSTRAINT indicator_definitions_name_key UNIQUE (name);
+
+
+--
+-- Name: indicator_definitions indicator_definitions_pkey; Type: CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.indicator_definitions
+    ADD CONSTRAINT indicator_definitions_pkey PRIMARY KEY (indicator_id);
+
+
+--
+-- Name: indicators indicators_timestamp_symbol_id_indicator_id_key; Type: CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.indicators
+    ADD CONSTRAINT indicators_timestamp_symbol_id_indicator_id_key UNIQUE ("timestamp", symbol_id, indicator_id);
+
+
+--
+-- Name: ohlc_data ohlc_data_timestamp_symbol_id_key; Type: CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.ohlc_data
+    ADD CONSTRAINT ohlc_data_timestamp_symbol_id_key UNIQUE ("timestamp", symbol_id);
+
+
+--
+-- Name: reversal_scan_results reversal_scan_results_pkey; Type: CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.reversal_scan_results
+    ADD CONSTRAINT reversal_scan_results_pkey PRIMARY KEY (symbol);
+
+
+--
+-- Name: splits splits_pkey; Type: CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.splits
+    ADD CONSTRAINT splits_pkey PRIMARY KEY (symbol_id, split_date);
+
+
+--
+-- Name: symbols_details symbols_details_pkey; Type: CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.symbols_details
+    ADD CONSTRAINT symbols_details_pkey PRIMARY KEY (symbol_id);
+
+
+--
+-- Name: symbols symbols_pkey; Type: CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.symbols
+    ADD CONSTRAINT symbols_pkey PRIMARY KEY (symbol_id);
+
+
+--
+-- Name: symbols symbols_symbol_key; Type: CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.symbols
+    ADD CONSTRAINT symbols_symbol_key UNIQUE (symbol);
+
+
+--
+-- Name: company_profile company_profile_symbol_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.company_profile
+    ADD CONSTRAINT company_profile_symbol_id_fkey FOREIGN KEY (symbol_id) REFERENCES public.symbols(symbol_id);
+
+
+--
+-- Name: indicators indicators_indicator_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.indicators
+    ADD CONSTRAINT indicators_indicator_id_fkey FOREIGN KEY (indicator_id) REFERENCES public.indicator_definitions(indicator_id);
+
+
+--
+-- Name: indicators indicators_symbol_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.indicators
+    ADD CONSTRAINT indicators_symbol_id_fkey FOREIGN KEY (symbol_id) REFERENCES public.symbols(symbol_id);
+
+
+--
+-- Name: ohlc_data ohlc_data_symbol_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.ohlc_data
+    ADD CONSTRAINT ohlc_data_symbol_id_fkey FOREIGN KEY (symbol_id) REFERENCES public.symbols(symbol_id);
+
+
+--
+-- Name: reversal_scan_results reversal_scan_results_symbol_fkey; Type: FK CONSTRAINT; Schema: public; Owner: pricepirate
+--
+
+ALTER TABLE ONLY public.reversal_scan_results
+    ADD CONSTRAINT reversal_scan_results_symbol_fkey FOREIGN KEY (symbol) REFERENCES public.symbols(symbol);
+
+
+--
+-- PostgreSQL database dump complete
+--
+
