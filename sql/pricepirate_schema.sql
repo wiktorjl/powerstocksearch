@@ -197,19 +197,52 @@ ALTER VIEW public.symbol_info_basic OWNER TO pricepirate;
 -- public.v_high_250 source
 
 CREATE OR REPLACE VIEW public.v_high_250
-AS SELECT id."name" as "indicator_name", 
-	od."timestamp",
+AS SELECT id.name AS indicator_name,
+    od."timestamp",
     s.symbol_id,
-    sd.name as "symbol_name",
+    s.symbol as symbol,
+    sd.name AS symbol_name,
     od.close,
     i.value
    FROM ohlc_data od
      JOIN symbols s ON s.symbol_id = od.symbol_id
      JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
-     JOIN indicators i ON i.symbol_id = od.symbol_id and i."timestamp"  = od."timestamp" 
-     JOIN indicator_definitions id ON id.indicator_id = i.indicator_id;
+     JOIN indicators i ON i.symbol_id = od.symbol_id AND i."timestamp" = od."timestamp" 
+     JOIN indicator_definitions id ON id.indicator_id = i.indicator_id and id.name = 'HIGH_250';
 
 ALTER VIEW public.v_high_250 OWNER TO pricepirate;
+
+CREATE OR REPLACE VIEW public.v_low_250
+AS SELECT id.name AS indicator_name,
+    od."timestamp",
+    s.symbol_id,
+    s.symbol as symbol,
+    sd.name AS symbol_name,
+    od.close,
+    i.value
+   FROM ohlc_data od
+     JOIN symbols s ON s.symbol_id = od.symbol_id
+     JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
+     JOIN indicators i ON i.symbol_id = od.symbol_id AND i."timestamp" = od."timestamp"
+     JOIN indicator_definitions id ON id.indicator_id = i.indicator_id AND id.name = 'LOW_250';
+
+ALTER VIEW public.v_low_250 OWNER TO pricepirate;
+
+CREATE OR REPLACE VIEW public.v_strategy_highlow_250
+AS SELECT vh.close AS "PRICE",
+    vh."timestamp" AS "DATE",
+    'OPEN'::text AS "ACTION"
+   FROM v_high_250 vh
+  WHERE abs(vh.close - vh.value) < 1::numeric
+UNION
+ SELECT vl.close AS "PRICE",
+    vl."timestamp" AS "DATE",
+    'CLOSE'::text AS "ACTION"
+   FROM v_low_250 vl
+  WHERE abs(vl.close - vl.value) < 1::numeric
+  ORDER BY 2;
+
+ALTER VIEW public.v_strategy_highlow_250 OWNER TO pricepirate;
 
 CREATE OR REPLACE VIEW public.v_symbols_details
 AS SELECT cp.ticker, sd."name", sd.sector, sd.subsector

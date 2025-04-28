@@ -17,7 +17,11 @@ VALUES
 ('HIGH_100', '100-day High'),
 ('HIGH_150', '150-day High'),
 ('HIGH_200', '200-day High'),
-('HIGH_250', '250-day High');
+('HIGH_250', '250-day High'),
+('LOW_100', '100-day Low'),
+('LOW_150', '150-day Low'),
+('LOW_200', '200-day Low'),
+('LOW_250', '250-day Low');
 
 WITH sma_data AS (
     SELECT
@@ -71,5 +75,32 @@ UNION ALL
 SELECT timestamp, symbol_id, (SELECT indicator_id FROM indicator_definitions WHERE name = 'HIGH_200'), high_200 FROM high_data WHERE high_200 IS NOT NULL
 UNION ALL
 SELECT timestamp, symbol_id, (SELECT indicator_id FROM indicator_definitions WHERE name = 'HIGH_250'), high_250 FROM high_data WHERE high_250 IS NOT NULL;
+
+COMMIT;
+
+WITH low_data AS (
+    SELECT
+        timestamp,
+        symbol_id,
+        MIN(low) OVER w100 AS low_100,
+        MIN(low) OVER w150 AS low_150,
+        MIN(low) OVER w200 AS low_200,
+        MIN(low) OVER w250 AS low_250
+    FROM
+        ohlc_data
+    WINDOW
+        w100 AS (PARTITION BY symbol_id ORDER BY timestamp ROWS BETWEEN 99 PRECEDING AND CURRENT ROW),
+        w150 AS (PARTITION BY symbol_id ORDER BY timestamp ROWS BETWEEN 149 PRECEDING AND CURRENT ROW),
+        w200 AS (PARTITION BY symbol_id ORDER BY timestamp ROWS BETWEEN 199 PRECEDING AND CURRENT ROW),
+        w250 AS (PARTITION BY symbol_id ORDER BY timestamp ROWS BETWEEN 249 PRECEDING AND CURRENT ROW)
+)
+INSERT INTO indicators (timestamp, symbol_id, indicator_id, value)
+SELECT timestamp, symbol_id, (SELECT indicator_id FROM indicator_definitions WHERE name = 'LOW_100'), low_100 FROM low_data WHERE low_100 IS NOT NULL
+UNION ALL
+SELECT timestamp, symbol_id, (SELECT indicator_id FROM indicator_definitions WHERE name = 'LOW_150'), low_150 FROM low_data WHERE low_150 IS NOT NULL
+UNION ALL
+SELECT timestamp, symbol_id, (SELECT indicator_id FROM indicator_definitions WHERE name = 'LOW_200'), low_200 FROM low_data WHERE low_200 IS NOT NULL
+UNION ALL
+SELECT timestamp, symbol_id, (SELECT indicator_id FROM indicator_definitions WHERE name = 'LOW_250'), low_250 FROM low_data WHERE low_250 IS NOT NULL;
 
 COMMIT;
