@@ -84,7 +84,7 @@ ALTER SEQUENCE public.indicator_definitions_indicator_id_seq OWNED BY public.ind
 --
 
 CREATE TABLE public.indicators (
-    "timestamp" timestamp with time zone NOT NULL,
+    "timestamp" date NOT NULL,
     symbol_id integer,
     indicator_id integer,
     value numeric(18,6)
@@ -98,7 +98,7 @@ ALTER TABLE public.indicators OWNER TO pricepirate;
 --
 
 CREATE TABLE public.ohlc_data (
-    "timestamp" timestamp with time zone NOT NULL,
+    "timestamp" date NOT NULL,
     symbol_id integer,
     open numeric(18,6),
     high numeric(18,6),
@@ -122,7 +122,7 @@ CREATE TABLE public.reversal_scan_results (
     sma150_slope_norm numeric(18,8),
     rsi14 numeric(18,6),
     last_date date,
-    scan_timestamp timestamp with time zone NOT NULL
+    scan_timestamp date NOT NULL
 );
 
 
@@ -134,7 +134,7 @@ ALTER TABLE public.reversal_scan_results OWNER TO pricepirate;
 
 CREATE TABLE public.splits (
     symbol_id integer NOT NULL,
-    split_date timestamp with time zone NOT NULL,
+    split_date date NOT NULL,
     ratio numeric NOT NULL
 );
 
@@ -189,11 +189,27 @@ CREATE VIEW public.symbol_info_basic AS
    FROM (((public.symbols s
      JOIN public.symbols_details d ON ((s.symbol_id = d.symbol_id)))
      JOIN public.ohlc_data o ON ((o.symbol_id = s.symbol_id)))
-     JOIN public.company_profile p ON ((p.symbol_id = s.symbol_id)))
-  WHERE ((o."timestamp")::date = '2025-04-10'::date);
+     JOIN public.company_profile p ON ((p.symbol_id = s.symbol_id)));
 
 
 ALTER VIEW public.symbol_info_basic OWNER TO pricepirate;
+
+-- public.v_high_250 source
+
+CREATE OR REPLACE VIEW public.v_high_250
+AS SELECT id."name" as "indicator_name", 
+	od."timestamp",
+    s.symbol_id,
+    sd.name as "symbol_name",
+    od.close,
+    i.value
+   FROM ohlc_data od
+     JOIN symbols s ON s.symbol_id = od.symbol_id
+     JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
+     JOIN indicators i ON i.symbol_id = od.symbol_id and i."timestamp"  = od."timestamp" 
+     JOIN indicator_definitions id ON id.indicator_id = i.indicator_id;
+
+ALTER VIEW public.v_high_250 OWNER TO pricepirate;
 
 --
 -- Name: symbols_symbol_id_seq; Type: SEQUENCE; Schema: public; Owner: pricepirate
