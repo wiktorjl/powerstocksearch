@@ -1,0 +1,59 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Module",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.main"
+        }
+        ,
+        {
+            "name":"Debug flask",
+            "type":"debugpy",
+            "request":"launch",
+            "module":"src.web.flaskapp",
+            "env": {
+                "FLASK_APP": "src.main",
+                "FLASK_ENV": "development"
+            },
+            "args": [
+                "run",
+                "--no-reload"
+            ],
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "name": "Load into DB",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.database.ohlc_split_importer",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "name": "Prep DB",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.database.init_db",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "name": "Apply Splits",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.database.split_adjusted_importer",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env"
+        }
+   ]
+}``
