@@ -118,7 +118,7 @@ class StrategyAnalyzer:
         simulation_results = []
         param_combinations = []
 
-        strategy_instance = self.strategy_class(db_config=self.db_config)
+        strategy_instance = self.strategy_class(db_config=self.db_config, strategy_name=self.strategy_name, strategy_title=self.strategy_name)
         if not strategy_instance.connection:
              logger.error(f"[{self.strategy_name}] Failed to establish database connection. Analysis aborted.")
              return pd.DataFrame() # Return empty DataFrame
@@ -195,12 +195,12 @@ if __name__ == '__main__':
 
     # This example assumes HighLowStrategy and a working config/DB setup
     try:
-        from ..strategies.highlow_strategy import HighLowStrategy
+        from ..strategies.basic_db_strategy import BasicDBStrategy
         # from ..config import DB_CONFIG # Assuming DB_CONFIG is a dict like {'host': ..., 'port': ...}
         # Mock config if not available
-        DB_CONFIG = None # Replace with actual config loading if possible
-
-        analyzer = StrategyAnalyzer(strategy_class=HighLowStrategy, db_config=DB_CONFIG)
+        # DB_CONFIG = None # Replace with actual config loading if possible
+        DB_CONFIG = {"view_name": "v_strategy_highlow_250"}
+        analyzer = StrategyAnalyzer(strategy_class=BasicDBStrategy, db_config=DB_CONFIG)
 
         # Define analysis parameters
         # HighLowStrategy.simulate(start_date: str)

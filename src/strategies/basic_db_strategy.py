@@ -17,17 +17,17 @@ except ImportError:
         DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD = (None,) * 5
 
 
-class HighLowStrategy(BaseStrategy):
+class BasicDBStrategy(BaseStrategy):
     """
     Simulates a trading strategy based on signals from the
-    v_strategy_highlow_250 database view. Inherits from BaseStrategy.
+    provided database view. Inherits from BaseStrategy.
 
     The strategy buys 1 lot on 'OPEN' signals and sells 1 lot on 'CLOSE' signals.
     It does not go short; if a 'CLOSE' signal appears while the position is flat,
     it is ignored.
     """
 
-    def __init__(self, db_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, strategy_name, strategy_title, db_config: Optional[Dict[str, Any]] = None):
         """
         Initializes the HighLow strategy simulator.
 
@@ -36,15 +36,20 @@ class HighLowStrategy(BaseStrategy):
                                                  Defaults to config file values if available.
         """
         # Call the parent constructor with the specific strategy name
-        super().__init__(db_config=db_config, strategy_name="HighLow 250")
+        self.strategy_name = strategy_name
+        self.strategy_title = strategy_title
+        self.view_name = db_config.get("view_name", "v_strategy_sma_150") if db_config else "v_strategy_sma_150"
+        super().__init__(db_config=db_config, strategy_name=strategy_title)
 
     def get_data_query(self) -> str:
         """
         Returns the SQL query specific to the HighLow 250 strategy.
         """
-        query = """
+        # self.strategy_name = "v_strategy_sma_150"
+
+        query = f"""
             SELECT "PRICE", "DATE", "ACTION"
-            FROM public.v_strategy_highlow_250
+            FROM public."{self.view_name}" -- Use validated table name
             WHERE "DATE" >= %(start_date)s::date -- Cast parameter to date
             ORDER BY "DATE";
         """
@@ -135,7 +140,7 @@ if __name__ == "__main__":
     start_simulation_date = "2020-01-01"
 
     # Instantiate the specific strategy
-    strategy_runner = HighLowStrategy() # db_config will be handled by BaseStrategy
+    strategy_runner = BasicDBStrategy(strategy_name="a", strategy_title="b") # db_config will be handled by BaseStrategy
 
     # Example with explicit config (if needed):
     # db_conf = {"host": "your_host", "port": 5432, "database": "your_db", "user": "your_user", "password": "your_password"}
