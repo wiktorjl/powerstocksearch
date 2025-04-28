@@ -211,6 +211,13 @@ AS SELECT id."name" as "indicator_name",
 
 ALTER VIEW public.v_high_250 OWNER TO pricepirate;
 
+CREATE OR REPLACE VIEW public.v_symbols_details
+AS SELECT cp.ticker, sd."name", sd.sector, sd.subsector
+   FROM company_profile cp
+   join symbols_details sd on sd.symbol_id = cp.symbol_id;
+
+ALTER VIEW public.v_symbols_details OWNER TO pricepirate;
+
 --
 -- Name: symbols_symbol_id_seq; Type: SEQUENCE; Schema: public; Owner: pricepirate
 --
