@@ -149,21 +149,19 @@ class BaseStrategy(ABC):
     def _calculate_statistics(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Calculates performance statistics from a list of trades.
-        (Copied from original HighLowStrategy, potentially reusable)
+        Returns a dictionary containing both raw numerical values and formatted strings.
         """
         if not trades:
+            # Return structure with Nones/Zeros for raw values and N/A or 0.00 for formatted
             return {
-                "total_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
-                "breakeven_trades": 0,
-                "win_rate_excl_breakeven": "0.00%",
-                "total_pnl": "0.00",
-                "average_pnl_per_trade": "0.00",
-                "average_win": "0.00",
-                "average_loss": "0.00",
-                "profit_factor": "N/A",
-                "average_trade_duration": "N/A"
+                "total_trades": 0, "winning_trades": 0, "losing_trades": 0, "breakeven_trades": 0,
+                "win_rate_raw": 0.0, "total_pnl_raw": 0.0, "average_pnl_per_trade_raw": 0.0,
+                "average_win_raw": 0.0, "average_loss_raw": 0.0, "profit_factor_raw": 0.0, # Use 0 for PF when no trades/loss
+                "average_trade_duration_raw": None,
+                "win_rate_formatted": "0.00%", "total_pnl_formatted": "0.00",
+                "average_pnl_per_trade_formatted": "0.00", "average_win_formatted": "0.00",
+                "average_loss_formatted": "0.00", "profit_factor_formatted": "N/A",
+                "average_trade_duration_formatted": "N/A"
             }
 
         total_trades = len(trades)
@@ -190,30 +188,46 @@ class BaseStrategy(ABC):
         average_win = total_profit / num_winning_trades if num_winning_trades > 0 else 0.0
         average_loss = total_loss / num_losing_trades if num_losing_trades > 0 else 0.0 # Use absolute loss total
 
-        profit_factor = total_profit / total_loss if total_loss > 0 else float('inf') # Handle zero loss case
+        # Handle profit factor calculation carefully
+        if total_loss > 0:
+            profit_factor = total_profit / total_loss
+        elif total_profit > 0 and total_loss == 0:
+             profit_factor = float('inf') # Infinite profit factor
+        else: # No profit and no loss (or only breakeven trades)
+             profit_factor = 0.0 # Or 1.0 depending on definition, let's use 0 for simplicity
 
         # Basic duration calculation
         durations = [trade['duration'] for trade in trades if trade.get('duration') is not None] # Use .get for safety
         average_trade_duration = sum(durations, pd.Timedelta(0)) / len(durations) if durations else None
 
-        # Format results for printing
+        # Return both raw and formatted values
         return {
             "total_trades": total_trades,
             "winning_trades": num_winning_trades,
             "losing_trades": num_losing_trades,
             "breakeven_trades": num_breakeven_trades,
-            "win_rate_excl_breakeven": f"{win_rate_excl_breakeven:.2f}%",
-            "total_pnl": f"{total_pnl:.2f}",
-            "average_pnl_per_trade": f"{average_pnl_per_trade:.2f}",
-            "average_win": f"{average_win:.2f}",
-            "average_loss": f"{average_loss:.2f}",
-            "profit_factor": f"{profit_factor:.2f}" if profit_factor != float('inf') else "Infinite",
-            "average_trade_duration": str(average_trade_duration) if average_trade_duration else "N/A"
+            # Raw values
+            "win_rate_raw": win_rate_excl_breakeven,
+            "total_pnl_raw": total_pnl,
+            "average_pnl_per_trade_raw": average_pnl_per_trade,
+            "average_win_raw": average_win,
+            "average_loss_raw": average_loss, # Note: This is positive value of loss
+            "profit_factor_raw": profit_factor,
+            "average_trade_duration_raw": average_trade_duration,
+            # Formatted values for display
+            "win_rate_formatted": f"{win_rate_excl_breakeven:.2f}%",
+            "total_pnl_formatted": f"{total_pnl:.2f}",
+            "average_pnl_per_trade_formatted": f"{average_pnl_per_trade:.2f}",
+            "average_win_formatted": f"{average_win:.2f}",
+            "average_loss_formatted": f"{average_loss:.2f}",
+            "profit_factor_formatted": f"{profit_factor:.2f}" if profit_factor != float('inf') else "Infinite",
+            "average_trade_duration_formatted": str(average_trade_duration) if average_trade_duration else "N/A"
         }
 
-    def run_simulation_and_print_stats(self, start_date: str):
+    def run_simulation_and_get_stats(self, start_date: str) -> Optional[Dict[str, Any]]:
         """
-        Runs the simulation using the subclass's implementation and prints the calculated statistics.
+        Runs the simulation using the subclass's implementation and returns the calculated statistics.
+        Returns None if the simulation cannot be run (e.g., DB connection issue).
         """
         # Ensure DB connection is attempted if not already connected
         if not self.connection and self.db_config:
@@ -221,21 +235,16 @@ class BaseStrategy(ABC):
 
         if not self.connection:
              logging.error(f"[{self.strategy_name}] Cannot run simulation without a valid database connection.")
-             print("\n--- Simulation Results ---")
-             print(f"Strategy: {self.strategy_name}")
-             print("ERROR: Could not connect to the database.")
-             print("--------------------------\n")
-             return # Exit if no connection
+             # Caller should handle the None return value
+             return None # Indicate failure
 
         trades = self.simulate(start_date)
         stats = self._calculate_statistics(trades)
 
-        print("\n--- Simulation Results ---")
-        if not trades:
-            print(f"Strategy: {self.strategy_name} | Start: {start_date} | Result: No trades executed.")
-        else:
-            print(f"Strategy: {self.strategy_name} | Start: {start_date} | Trades: {stats['total_trades']} | WinRate: {stats['win_rate_excl_breakeven']} | PnL: {stats['total_pnl']} | Avg PnL: {stats['average_pnl_per_trade']} | PF: {stats['profit_factor']}")
-        print("--------------------------\n")
+        # Optional: Log completion, but avoid extensive printing here
+        logging.info(f"[{self.strategy_name}] Simulation complete for start date {start_date}. Trades: {stats['total_trades']}.")
+
+        return stats # Return the stats dictionary
 
 
     def close_connection(self):

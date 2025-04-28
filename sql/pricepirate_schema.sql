@@ -228,8 +228,10 @@ AS SELECT id.name AS indicator_name,
 
 ALTER VIEW public.v_low_250 OWNER TO pricepirate;
 
+-- public.v_xabove_150 source
+
 CREATE OR REPLACE VIEW public.v_xabove_150
-AS WITH all_indicator_data AS (
+AS WITH indicator_data AS (
          SELECT s.symbol_id,
             s.symbol,
             sd.name AS company_name,
@@ -237,29 +239,46 @@ AS WITH all_indicator_data AS (
             sd.subsector,
             i."timestamp",
             i.value,
-            lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") AS previous_value,
-                CASE
-                    WHEN lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") IS NOT NULL AND i.value > lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") THEN 1
-                    ELSE 0
-                END AS is_increase
+            lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") AS previous_value
            FROM symbols s
              JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
              JOIN indicators i ON i.symbol_id = s.symbol_id
              JOIN indicator_definitions id ON id.indicator_id = i.indicator_id
           WHERE id.name = 'SMA_150'::text
+        ), increase_flags AS (
+         SELECT indicator_data.symbol_id,
+            indicator_data.symbol,
+            indicator_data.company_name,
+            indicator_data.sector,
+            indicator_data.subsector,
+            indicator_data."timestamp",
+            indicator_data.value,
+            indicator_data.previous_value,
+                CASE
+                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value > indicator_data.previous_value THEN 1
+                    ELSE 0
+                END AS is_increase,
+            lag(
+                CASE
+                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value > indicator_data.previous_value THEN 1
+                    ELSE 0
+                END) OVER (PARTITION BY indicator_data.symbol_id ORDER BY indicator_data."timestamp") AS previous_is_increase
+           FROM indicator_data
         )
  SELECT symbol,
-    "timestamp" AS increase_date,
+    "timestamp" AS increase_start_date,
     value AS current_value,
     previous_value
-   FROM all_indicator_data
-  WHERE is_increase = 1
+   FROM increase_flags
+  WHERE is_increase = 1 AND (previous_is_increase = 0 OR previous_is_increase IS NULL)
   ORDER BY "timestamp";
 
 ALTER VIEW public.v_xabove_150 OWNER TO pricepirate;
 
+-- public.v_xbelow_150 source
+
 CREATE OR REPLACE VIEW public.v_xbelow_150
-AS WITH all_indicator_data AS (
+AS WITH indicator_data AS (
          SELECT s.symbol_id,
             s.symbol,
             sd.name AS company_name,
@@ -267,23 +286,38 @@ AS WITH all_indicator_data AS (
             sd.subsector,
             i."timestamp",
             i.value,
-            lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") AS previous_value,
-                CASE
-                    WHEN lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") IS NOT NULL AND i.value < lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") THEN 1
-                    ELSE 0
-                END AS is_decrease
+            lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") AS previous_value
            FROM symbols s
              JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
              JOIN indicators i ON i.symbol_id = s.symbol_id
              JOIN indicator_definitions id ON id.indicator_id = i.indicator_id
           WHERE id.name = 'SMA_150'::text
+        ), decrease_flags AS (
+         SELECT indicator_data.symbol_id,
+            indicator_data.symbol,
+            indicator_data.company_name,
+            indicator_data.sector,
+            indicator_data.subsector,
+            indicator_data."timestamp",
+            indicator_data.value,
+            indicator_data.previous_value,
+                CASE
+                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value < indicator_data.previous_value THEN 1
+                    ELSE 0
+                END AS is_decrease,
+            lag(
+                CASE
+                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value < indicator_data.previous_value THEN 1
+                    ELSE 0
+                END) OVER (PARTITION BY indicator_data.symbol_id ORDER BY indicator_data."timestamp") AS previous_is_decrease
+           FROM indicator_data
         )
  SELECT symbol,
-    "timestamp" AS decrease_date,
+    "timestamp" AS decrease_start_date,
     value AS current_value,
     previous_value
-   FROM all_indicator_data
-  WHERE is_decrease = 1
+   FROM decrease_flags
+  WHERE is_decrease = 1 AND (previous_is_decrease = 0 OR previous_is_decrease IS NULL)
   ORDER BY "timestamp";
 
 ALTER VIEW public.v_xbelow_150 OWNER TO pricepirate;
@@ -311,13 +345,13 @@ AS SELECT "PRICE",
     "SYMBOL",
     "ACTION"
    FROM ( SELECT b.current_value AS "PRICE",
-            b.decrease_date AS "DATE",
+            b.decrease_start_date AS "DATE",
             b.symbol AS "SYMBOL",
             'CLOSE'::text AS "ACTION"
            FROM v_xbelow_150 b
         UNION
          SELECT a.current_value AS "PRICE",
-            a.increase_date AS "DATE",
+            a.increase_start_date AS "DATE",
             a.symbol AS "SYMBOL",
             'OPEN'::text AS "ACTION"
            FROM v_xabove_150 a) unnamed_subquery
@@ -325,6 +359,21 @@ AS SELECT "PRICE",
 
 ALTER VIEW public.v_strategy_sma_150 OWNER TO pricepirate;
 
+CREATE OR REPLACE VIEW public.v_strategy_high250_sma150
+AS SELECT vsh."ACTION",
+    vsh."DATE",
+    vsh."PRICE"
+   FROM v_strategy_highlow_250 vsh
+  WHERE vsh."ACTION" = 'OPEN'::text
+UNION
+ SELECT vss."ACTION",
+    vss."DATE",
+    vss."PRICE"
+   FROM v_strategy_sma_150 vss
+  WHERE vss."ACTION" = 'CLOSE'::text
+  ORDER BY 2;
+
+ALTER
 
 CREATE OR REPLACE VIEW public.v_symbols_details
 AS SELECT cp.ticker, sd."name", sd.sector, sd.subsector
