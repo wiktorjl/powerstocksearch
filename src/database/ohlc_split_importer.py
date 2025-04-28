@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from typing import Dict, Optional, Set, List, Any
-from datetime import datetime, timezone
+from datetime import datetime, date # Removed time, timezone
 from decimal import Decimal
 from pathlib import Path
 import pandas as pd # For parsing split date
@@ -97,8 +97,18 @@ def parse_ohlc_data(json_data, symbol_id):
             logger.warning(f"Skipping OHLC entry due to missing keys: {entry}")
             continue
         try:
-            # Ensure timestamp includes timezone information (assuming UTC if not specified)
-            ts = datetime.fromisoformat(entry['Date']).replace(tzinfo=timezone.utc) # Assume UTC
+            # Ensure entry['Date'] is a date object
+            date_obj = entry['Date']
+            if not isinstance(date_obj, date):
+                try:
+                    # Attempt conversion if it's not already a date (e.g., from string or datetime)
+                    date_obj = pd.to_datetime(date_obj).date()
+                except Exception as conversion_error:
+                    logger.warning(f"Could not convert entry['Date'] to date object ({conversion_error}): {entry}. Skipping.")
+                    continue
+
+            # Use the date object directly as the DB column is now DATE
+            # date_obj is already validated as a date object above
             open_price = float(entry['Open']) if entry['Open'] is not None else None
             high_price = float(entry['High']) if entry['High'] is not None else None
             low_price = float(entry['Low']) if entry['Low'] is not None else None
@@ -106,7 +116,7 @@ def parse_ohlc_data(json_data, symbol_id):
             volume = int(entry['Volume']) if entry['Volume'] is not None else None
 
             parsed_data.append((
-                ts,
+                date_obj, # Use the date object directly
                 symbol_id,
                 open_price,
                 high_price,
@@ -269,6 +279,7 @@ def main():
             all_tickers_details: Dict[str, Dict[str, Optional[str]]] = local_data.load_tickers_and_data_from_sources(config.TICKER_SOURCES)
             logger.info(f"Loaded details for {len(all_tickers_details)} tickers from sources.")
 
+            ohlc_files = [f for f in ohlc_files if "AMZN" in f._str] # Ensure only files are processed
             for ohlc_filepath in ohlc_files:
                 filename = ohlc_filepath.name
                 # Expecting filename like 'AMZN.csv', so the stem is the symbol
@@ -305,10 +316,10 @@ def main():
                     # 3. Process and Insert OHLC Data from CSV
                     ohlc_inserted_count = 0
                     try:
-                        # Read CSV using pandas
+                        # Read CSV using pandas, keeping 'Date' as string initially
                         # Assuming standard columns: Date, Open, High, Low, Close, Volume
                         # Adjust column names if they differ in your CSVs
-                        df_ohlc = pd.read_csv(ohlc_filepath, parse_dates=['Date'])
+                        df_ohlc = pd.read_csv(ohlc_filepath, dtype={'Date': str}) # Read Date as string
 
                         # Check for required columns (case-insensitive check)
                         required_cols = {'date', 'open', 'high', 'low', 'close', 'volume'}
@@ -322,8 +333,18 @@ def main():
 
                         # Convert DataFrame to list of dictionaries (records)
                         # Handle potential NaNs or missing values appropriately before conversion if needed
-                        # Convert 'Date' column back to ISO string format expected by parse_ohlc_data
-                        df_ohlc['Date'] = df_ohlc['Date'].dt.strftime('%Y-%m-%dT%H:%M:%S') # Assuming T00:00:00 if only date
+                        # Explicitly convert 'Date' string column to datetime, forcing UTC, then extract date
+                        try:
+                            # Attempt conversion assuming common formats, force UTC
+                            df_ohlc['Date'] = pd.to_datetime(df_ohlc['Date'], utc=True, errors='coerce')
+                            # Drop rows where date conversion failed
+                            df_ohlc.dropna(subset=['Date'], inplace=True)
+                            # Extract the date part (this is now the correct calendar date in UTC)
+                            df_ohlc['Date'] = df_ohlc['Date'].dt.date
+                        except Exception as date_conv_err:
+                             logger.error(f"Error converting 'Date' column in {filename}: {date_conv_err}. Skipping OHLC insert.")
+                             raise ValueError("Date conversion failed in CSV") from date_conv_err
+
                         ohlc_data_list = df_ohlc.to_dict('records')
 
                     except pd.errors.EmptyDataError:
