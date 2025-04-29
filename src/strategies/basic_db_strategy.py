@@ -3,8 +3,9 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-# Import the base class
+# Import the base class and execution models
 from .base_strategy import BaseStrategy
+from .execution_models import BaseExecutionModel, SimpleLongOnlyExecution # Import execution models
 # Keep original imports for config fallback if base_strategy fails (though unlikely)
 # and for the __main__ block example
 try:
@@ -27,25 +28,34 @@ class BasicDBStrategy(BaseStrategy):
     it is ignored.
     """
 
-    def __init__(self, strategy_name, strategy_title, view_name, db_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, strategy_name, strategy_title, symbol_name, view_name, 
+                 db_config: Optional[Dict[str, Any]] = None,
+                 execution_model: Optional[BaseExecutionModel] = None): # Add execution_model param
         """
-        Initializes the HighLow strategy simulator.
+        Initializes the BasicDB strategy simulator.
 
         Args:
+            strategy_name (str): Name for logging/identification.
+            strategy_title (str): Display title for the strategy.
+            view_name (str): The database view containing signals.
             db_config (Dict[str, Any], optional): Database connection parameters.
-                                                 Defaults to config file values if available.
+            execution_model (BaseExecutionModel, optional): The execution model to use.
+                                                        Defaults to SimpleLongOnlyExecution.
         """
-        # Call the parent constructor with the specific strategy name
-        self.strategy_name = strategy_name
+        self.strategy_name = strategy_name # Keep this for potential specific logging if needed
         self.strategy_title = strategy_title
+        self.symbol_name = symbol_name
         if view_name:
             self.view_name = view_name
         elif db_config and "view_name" in db_config:
             self.view_name = db_config.get("view_name", "v_strategy_sma_150")
         else:
             raise ValueError("view_name must be provided in db_config or as an argument.")
-        
-        super().__init__(db_config=db_config, strategy_name=strategy_title)
+
+        # Pass execution_model up to the BaseStrategy constructor
+        super().__init__(db_config=db_config, 
+                         strategy_name=strategy_title, # Use title for BaseStrategy's name
+                         execution_model=execution_model)
 
     def get_data_query(self) -> str:
         """
@@ -56,75 +66,19 @@ class BasicDBStrategy(BaseStrategy):
             SELECT "PRICE", "DATE", "ACTION"
             FROM public."{self.view_name}" -- Use validated table name
             WHERE "DATE" >= %(start_date)s::date -- Cast parameter to date
+            AND "SYMBOL" = '{self.symbol_name}'
             ORDER BY "DATE";
         """
         return query
 
-    def simulate(self, start_date: str) -> List[Dict[str, Any]]:
-        """
-        Runs the backtest simulation based on fetched data for the HighLow strategy.
-
-        Args:
-            start_date (str): The start date for the simulation in 'YYYY-MM-DD'.
-
-        Returns:
-            List[Dict[str, Any]]: A list of completed trades.
-        """
-        # Fetch data using the base class method which uses get_data_query()
-        signals_df = self._fetch_data(start_date)
-
-        # Data cleaning (like dropping NaN prices) is handled in base _fetch_data
-
-        if signals_df.empty:
-            logging.warning(f"[{self.strategy_name}] No valid signals data found after cleaning or error fetching data. Simulation cannot proceed.")
-            return []
-
-        position = 0  # 0 = flat, 1 = long 1 lot
-        entry_price = 0.0
-        entry_date = None
-        trades = []
-
-        logging.info(f"[{self.strategy_name}] Starting simulation...")
-        for index, row in signals_df.iterrows():
-            # Ensure columns exist before accessing
-            price = row.get('PRICE')
-            date = row.get('DATE')
-            action = row.get('ACTION')
-
-            # Skip row if essential data is missing
-            if price is None or date is None or action is None:
-                logging.warning(f"[{self.strategy_name}] Skipping row due to missing data: {row}")
-                continue
-
-            if action == 'OPEN' and position == 0:
-                position = 1
-                entry_price = price
-                entry_date = date
-                logging.debug(f"[{self.strategy_name}] {date}: Entered LONG at {price}")
-            elif action == 'CLOSE' and position == 1:
-                exit_price = price
-                exit_date = date
-                pnl = exit_price - entry_price  # PnL per lot
-                trade_duration = exit_date - entry_date if entry_date else None
-
-                trades.append({
-                    "entry_date": entry_date,
-                    "entry_price": entry_price,
-                    "exit_date": exit_date,
-                    "exit_price": exit_price,
-                    "pnl": pnl,
-                    "duration": trade_duration
-                })
-                logging.debug(f"[{self.strategy_name}] {date}: Exited LONG at {exit_price}. PnL: {pnl:.2f}")
-                # Reset position for next trade
-                position = 0
-                entry_price = 0.0
-                entry_date = None
-            # Ignore OPEN if already long
-            # Ignore CLOSE if flat (position == 0)
-
-        logging.info(f"[{self.strategy_name}] Simulation finished. Completed {len(trades)} trades.")
-        return trades
+    # REMOVE the simulate method entirely
+    # def simulate(self, start_date: str) -> List[Dict[str, Any]]:
+    #     """
+    #     Runs the backtest simulation based on fetched data for the HighLow strategy.
+    #     ... (rest of docstring) ...
+    #     """
+    #     # ... (old implementation removed) ...
+    #     pass
 
     # _calculate_statistics, run_simulation_and_print_stats, _connect_db,
     # close_connection are now handled by the BaseStrategy class.
@@ -156,32 +110,38 @@ if __name__ == "__main__":
         print("Error: pandas library is required for comparative statistics. Please install it (`pip install pandas`).")
         exit(1)
 
+    # Define which execution model to use for this run
+    # You could make this configurable later
+    execution_model_to_use = SimpleLongOnlyExecution()
+    print(f"Using Execution Model: {execution_model_to_use.__class__.__name__}\n")
 
-    for key, strategy_definition in strategies.items():
-        print(f"--- Running Strategy: {key} ({strategy_definition['title']}) ---")
-        # Instantiate the strategy runner
-        strategy_runner = BasicDBStrategy(
-            strategy_name=strategy_definition["title"], # Name used in BaseStrategy logging
-            strategy_title=strategy_definition["title"], # Specific title if needed elsewhere
-            view_name=strategy_definition["view"]
-            # db_config is implicitly handled by BaseStrategy using src.config
-        )
+    for symbol in ["AMZN", "AAPL"]:
+        for key, strategy_definition in strategies.items():
+            print(f"--- Running Strategy: {key} ({strategy_definition['title']}) ---")
+            # Instantiate the strategy runner, passing the execution model
+            strategy_runner = BasicDBStrategy(
+                strategy_name=key, # Use the key for internal logging maybe
+                strategy_title=strategy_definition["title"],
+                view_name=strategy_definition["view"],
+                symbol_name=symbol,  # Example symbol, adjust as needed``
+                execution_model=execution_model_to_use # Pass the chosen model
+            )
 
-        if strategy_runner.connection:
-            # Run simulation and get stats
-            stats = strategy_runner.run_simulation_and_get_stats(start_simulation_date)
-            if stats:
-                all_results[key] = stats # Store results using the strategy key
-                # Optionally print individual summary here if desired
-                # print(f"  Completed: Trades={stats['total_trades']}, PnL={stats['total_pnl_formatted']}, PF={stats['profit_factor_formatted']}")
+            if strategy_runner.connection:
+                # Run simulation and get stats (uses the execution model internally now)
+                stats = strategy_runner.run_simulation_and_get_stats(start_simulation_date)
+                if stats:
+                    all_results[key+symbol] = (symbol, stats) # Store results using the strategy key
+                    # Optionally print individual summary here if desired
+                    # print(f"  Completed: Trades={stats['total_trades']}, PnL={stats['total_pnl_formatted']}, PF={stats['profit_factor_formatted']}")
+                else:
+                    print(f"  Strategy {key} failed to produce results (check logs).")
+                # Close connection after each strategy run
+                strategy_runner.close_connection()
+                print(f"--- Finished Strategy: {key} ---")
             else:
-                 print(f"  Strategy {key} failed to produce results (check logs).")
-            # Close connection after each strategy run
-            strategy_runner.close_connection()
-            print(f"--- Finished Strategy: {key} ---")
-        else:
-            print(f"Could not connect to DB for strategy {key}. Skipping.")
-            # No need to call close_connection if it never connected
+                print(f"Could not connect to DB for strategy {key}. Skipping.")
+                # No need to call close_connection if it never connected
 
     # --- Comparative Statistics ---
     print("\n--- Comparative Statistics ---")
@@ -191,13 +151,17 @@ if __name__ == "__main__":
         # Convert results to DataFrame for better display
         # Select relevant columns for comparison (using formatted strings for clarity)
         comparison_data = {}
-        for key, stats in all_results.items():
+        for key, symbol_stats in all_results.items():
+             symbol = symbol_stats[0]
+             stats = symbol_stats[1]
              comparison_data[key] = {
+                 "Symbol": symbol,
                  "Total Trades": stats.get("total_trades", 0),
                  "Win Rate (%)": stats.get("win_rate_formatted", "N/A"),
                  "Total PnL": stats.get("total_pnl_formatted", "N/A"),
                  "Avg PnL/Trade": stats.get("average_pnl_per_trade_formatted", "N/A"),
                  "Profit Factor": stats.get("profit_factor_formatted", "N/A"),
+                 "Max Drawdown": stats.get("max_drawdown_formatted", "N/A"), # Add Max Drawdown
                  "Avg Win": stats.get("average_win_formatted", "N/A"),
                  "Avg Loss": stats.get("average_loss_formatted", "N/A"),
                  # Store raw PnL for sorting

@@ -1,7 +1,7 @@
 import pandas as pd
 import logging
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional, Type # Add Type
 from abc import ABC, abstractmethod
 
 # Assuming the project structure allows this import
@@ -20,6 +20,9 @@ except ImportError:
         # Provide fallback or raise a more specific error if needed
         DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD = (None,) * 5
 
+# Import the new execution model base class
+from .execution_models import BaseExecutionModel, SimpleLongOnlyExecution
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class BaseStrategy(ABC):
@@ -31,14 +34,17 @@ class BaseStrategy(ABC):
     in `simulate` and define the data source via `get_data_query`.
     """
 
-    def __init__(self, db_config: Optional[Dict[str, Any]] = None, strategy_name: str = "BaseStrategy"):
+    def __init__(self, db_config: Optional[Dict[str, Any]] = None, 
+                 strategy_name: str = "BaseStrategy",
+                 execution_model: Optional[BaseExecutionModel] = None):
         """
         Initializes the base strategy simulator.
 
         Args:
             db_config (Dict[str, Any], optional): Database connection parameters.
-                                                 Defaults to config file values if available.
             strategy_name (str): The name of the specific strategy.
+            execution_model (BaseExecutionModel, optional): The execution model to use.
+                                                        Defaults to SimpleLongOnlyExecution.
         """
         self.strategy_name = strategy_name
         if db_config is None:
@@ -60,6 +66,10 @@ class BaseStrategy(ABC):
         self.connection = None
         if self.db_config: # Only attempt connection if config is present
             self._connect_db()
+
+        # Assign or default the execution model
+        self.execution_model = execution_model if execution_model is not None else SimpleLongOnlyExecution()
+        logging.info(f"[{self.strategy_name}] Using execution model: {self.execution_model.__class__.__name__}")
 
     def _connect_db(self):
         """Establishes the database connection."""
@@ -130,25 +140,20 @@ class BaseStrategy(ABC):
             logging.error(f"[{self.strategy_name}] Error fetching data from database: {e}")
             return pd.DataFrame() # Return empty DataFrame on error
 
-    @abstractmethod
-    def simulate(self, start_date: str) -> List[Dict[str, Any]]:
-        """
-        Abstract method to run the backtest simulation based on fetched data.
-        Subclasses must implement their specific trading logic here.
-
-        Args:
-            start_date (str): The start date for the simulation in 'YYYY-MM-DD'.
-
-        Returns:
-            List[Dict[str, Any]]: A list of completed trades, each represented
-                                  as a dictionary. Returns empty list if no
-                                  data or error occurs.
-        """
-        pass
+    # REMOVE the abstract simulate method
+    # @abstractmethod
+    # def simulate(self, start_date: str) -> List[Dict[str, Any]]:
+    #     """
+    #     Abstract method to run the backtest simulation based on fetched data.
+    #     Subclasses must implement their specific trading logic here.
+    #     ... (rest of docstring) ...
+    #     """
+    #     pass
 
     def _calculate_statistics(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Calculates performance statistics from a list of trades.
+        Includes maximum drawdown calculation.
         Returns a dictionary containing both raw numerical values and formatted strings.
         """
         if not trades:
@@ -158,11 +163,17 @@ class BaseStrategy(ABC):
                 "win_rate_raw": 0.0, "total_pnl_raw": 0.0, "average_pnl_per_trade_raw": 0.0,
                 "average_win_raw": 0.0, "average_loss_raw": 0.0, "profit_factor_raw": 0.0, # Use 0 for PF when no trades/loss
                 "average_trade_duration_raw": None,
+                "max_drawdown_raw": 0.0, # Add max drawdown
+                # Formatted values
                 "win_rate_formatted": "0.00%", "total_pnl_formatted": "0.00",
                 "average_pnl_per_trade_formatted": "0.00", "average_win_formatted": "0.00",
                 "average_loss_formatted": "0.00", "profit_factor_formatted": "N/A",
-                "average_trade_duration_formatted": "N/A"
+                "average_trade_duration_formatted": "N/A",
+                "max_drawdown_formatted": "0.00" # Add formatted max drawdown
             }
+
+        # Sort trades by exit date to calculate equity curve correctly
+        trades.sort(key=lambda x: x['exit_date'])
 
         total_trades = len(trades)
         pnl_values = [trade['pnl'] for trade in trades]
@@ -197,8 +208,22 @@ class BaseStrategy(ABC):
              profit_factor = 0.0 # Or 1.0 depending on definition, let's use 0 for simplicity
 
         # Basic duration calculation
-        durations = [trade['duration'] for trade in trades if trade.get('duration') is not None] # Use .get for safety
-        average_trade_duration = sum(durations, pd.Timedelta(0)) / len(durations) if durations else None
+        durations = [trade['duration'] for trade in trades if trade.get('duration') is not None and isinstance(trade['duration'], timedelta)] # Check type
+        average_trade_duration = sum(durations, timedelta(0)) / len(durations) if durations else None
+
+        # --- Maximum Drawdown Calculation ---
+        cumulative_pnl = 0.0
+        peak_pnl = 0.0
+        max_drawdown = 0.0
+        for pnl in pnl_values:
+            cumulative_pnl += pnl
+            if cumulative_pnl > peak_pnl:
+                peak_pnl = cumulative_pnl
+            drawdown = peak_pnl - cumulative_pnl # Drawdown is positive value
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+        # --- End Maximum Drawdown Calculation ---
+
 
         # Return both raw and formatted values
         return {
@@ -214,6 +239,7 @@ class BaseStrategy(ABC):
             "average_loss_raw": average_loss, # Note: This is positive value of loss
             "profit_factor_raw": profit_factor,
             "average_trade_duration_raw": average_trade_duration,
+            "max_drawdown_raw": max_drawdown, # Add raw max drawdown
             # Formatted values for display
             "win_rate_formatted": f"{win_rate_excl_breakeven:.2f}%",
             "total_pnl_formatted": f"{total_pnl:.2f}",
@@ -221,13 +247,15 @@ class BaseStrategy(ABC):
             "average_win_formatted": f"{average_win:.2f}",
             "average_loss_formatted": f"{average_loss:.2f}",
             "profit_factor_formatted": f"{profit_factor:.2f}" if profit_factor != float('inf') else "Infinite",
-            "average_trade_duration_formatted": str(average_trade_duration) if average_trade_duration else "N/A"
+            "average_trade_duration_formatted": str(average_trade_duration) if average_trade_duration else "N/A",
+            "max_drawdown_formatted": f"{max_drawdown:.2f}" # Add formatted max drawdown
         }
 
     def run_simulation_and_get_stats(self, start_date: str) -> Optional[Dict[str, Any]]:
         """
-        Runs the simulation using the subclass's implementation and returns the calculated statistics.
-        Returns None if the simulation cannot be run (e.g., DB connection issue).
+        Runs the simulation by fetching data and using the assigned execution model,
+        then returns the calculated statistics.
+        Returns None if the simulation cannot be run (e.g., DB connection issue or fetch error).
         """
         # Ensure DB connection is attempted if not already connected
         if not self.connection and self.db_config:
@@ -235,17 +263,30 @@ class BaseStrategy(ABC):
 
         if not self.connection:
              logging.error(f"[{self.strategy_name}] Cannot run simulation without a valid database connection.")
-             # Caller should handle the None return value
-             return None # Indicate failure
+             return None
 
-        trades = self.simulate(start_date)
+        # Fetch data first
+        signals_df = self._fetch_data(start_date)
+
+        if signals_df.empty:
+            logging.warning(f"[{self.strategy_name}] No data fetched for start date {start_date}. Cannot run execution.")
+            # Return stats for zero trades
+            return self._calculate_statistics([])
+
+        # Use the execution model to get trades
+        if not self.execution_model:
+            logging.error(f"[{self.strategy_name}] No execution model assigned. Cannot run simulation.")
+            return None # Or return zero stats? Error seems more appropriate
+
+        logging.info(f"[{self.strategy_name}] Running execution model {self.execution_model.__class__.__name__}...")
+        trades = self.execution_model.execute(signals_df, self.strategy_name)
+
+        # Calculate statistics based on the trades from the execution model
         stats = self._calculate_statistics(trades)
 
-        # Optional: Log completion, but avoid extensive printing here
-        logging.info(f"[{self.strategy_name}] Simulation complete for start date {start_date}. Trades: {stats['total_trades']}.")
+        logging.info(f"[{self.strategy_name}] Simulation complete for start date {start_date}. Trades: {stats.get('total_trades', 0)}.")
 
-        return stats # Return the stats dictionary
-
+        return stats
 
     def close_connection(self):
         """Closes the database connection if it's open."""

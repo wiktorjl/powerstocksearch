@@ -167,220 +167,6 @@ CREATE TABLE public.symbols_details (
 
 ALTER TABLE public.symbols_details OWNER TO pricepirate;
 
---
--- Name: symbol_info_basic; Type: VIEW; Schema: public; Owner: pricepirate
---
-
-CREATE VIEW public.symbol_info_basic AS
- SELECT s.symbol_id,
-    s.symbol,
-    d.sector,
-    d.subsector,
-    d.name,
-    p.logo,
-    p.weburl,
-    p.market_capitalization,
-    o."timestamp",
-    o.open,
-    o.high,
-    o.low,
-    o.close,
-    o.volume
-   FROM (((public.symbols s
-     JOIN public.symbols_details d ON ((s.symbol_id = d.symbol_id)))
-     JOIN public.ohlc_data o ON ((o.symbol_id = s.symbol_id)))
-     JOIN public.company_profile p ON ((p.symbol_id = s.symbol_id)));
-
-
-ALTER VIEW public.symbol_info_basic OWNER TO pricepirate;
-
--- public.v_high_250 source
-
-CREATE OR REPLACE VIEW public.v_high_250
-AS SELECT id.name AS indicator_name,
-    od."timestamp",
-    s.symbol_id,
-    s.symbol as symbol,
-    sd.name AS symbol_name,
-    od.close,
-    i.value
-   FROM ohlc_data od
-     JOIN symbols s ON s.symbol_id = od.symbol_id
-     JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
-     JOIN indicators i ON i.symbol_id = od.symbol_id AND i."timestamp" = od."timestamp" 
-     JOIN indicator_definitions id ON id.indicator_id = i.indicator_id and id.name = 'HIGH_250';
-
-ALTER VIEW public.v_high_250 OWNER TO pricepirate;
-
-CREATE OR REPLACE VIEW public.v_low_250
-AS SELECT id.name AS indicator_name,
-    od."timestamp",
-    s.symbol_id,
-    s.symbol as symbol,
-    sd.name AS symbol_name,
-    od.close,
-    i.value
-   FROM ohlc_data od
-     JOIN symbols s ON s.symbol_id = od.symbol_id
-     JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
-     JOIN indicators i ON i.symbol_id = od.symbol_id AND i."timestamp" = od."timestamp"
-     JOIN indicator_definitions id ON id.indicator_id = i.indicator_id AND id.name = 'LOW_250';
-
-ALTER VIEW public.v_low_250 OWNER TO pricepirate;
-
--- public.v_xabove_150 source
-
-CREATE OR REPLACE VIEW public.v_xabove_150
-AS WITH indicator_data AS (
-         SELECT s.symbol_id,
-            s.symbol,
-            sd.name AS company_name,
-            sd.sector,
-            sd.subsector,
-            i."timestamp",
-            i.value,
-            lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") AS previous_value
-           FROM symbols s
-             JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
-             JOIN indicators i ON i.symbol_id = s.symbol_id
-             JOIN indicator_definitions id ON id.indicator_id = i.indicator_id
-          WHERE id.name = 'SMA_150'::text
-        ), increase_flags AS (
-         SELECT indicator_data.symbol_id,
-            indicator_data.symbol,
-            indicator_data.company_name,
-            indicator_data.sector,
-            indicator_data.subsector,
-            indicator_data."timestamp",
-            indicator_data.value,
-            indicator_data.previous_value,
-                CASE
-                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value > indicator_data.previous_value THEN 1
-                    ELSE 0
-                END AS is_increase,
-            lag(
-                CASE
-                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value > indicator_data.previous_value THEN 1
-                    ELSE 0
-                END) OVER (PARTITION BY indicator_data.symbol_id ORDER BY indicator_data."timestamp") AS previous_is_increase
-           FROM indicator_data
-        )
- SELECT symbol,
-    "timestamp" AS increase_start_date,
-    value AS current_value,
-    previous_value
-   FROM increase_flags
-  WHERE is_increase = 1 AND (previous_is_increase = 0 OR previous_is_increase IS NULL)
-  ORDER BY "timestamp";
-
-ALTER VIEW public.v_xabove_150 OWNER TO pricepirate;
-
--- public.v_xbelow_150 source
-
-CREATE OR REPLACE VIEW public.v_xbelow_150
-AS WITH indicator_data AS (
-         SELECT s.symbol_id,
-            s.symbol,
-            sd.name AS company_name,
-            sd.sector,
-            sd.subsector,
-            i."timestamp",
-            i.value,
-            lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") AS previous_value
-           FROM symbols s
-             JOIN symbols_details sd ON s.symbol_id = sd.symbol_id
-             JOIN indicators i ON i.symbol_id = s.symbol_id
-             JOIN indicator_definitions id ON id.indicator_id = i.indicator_id
-          WHERE id.name = 'SMA_150'::text
-        ), decrease_flags AS (
-         SELECT indicator_data.symbol_id,
-            indicator_data.symbol,
-            indicator_data.company_name,
-            indicator_data.sector,
-            indicator_data.subsector,
-            indicator_data."timestamp",
-            indicator_data.value,
-            indicator_data.previous_value,
-                CASE
-                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value < indicator_data.previous_value THEN 1
-                    ELSE 0
-                END AS is_decrease,
-            lag(
-                CASE
-                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value < indicator_data.previous_value THEN 1
-                    ELSE 0
-                END) OVER (PARTITION BY indicator_data.symbol_id ORDER BY indicator_data."timestamp") AS previous_is_decrease
-           FROM indicator_data
-        )
- SELECT symbol,
-    "timestamp" AS decrease_start_date,
-    value AS current_value,
-    previous_value
-   FROM decrease_flags
-  WHERE is_decrease = 1 AND (previous_is_decrease = 0 OR previous_is_decrease IS NULL)
-  ORDER BY "timestamp";
-
-ALTER VIEW public.v_xbelow_150 OWNER TO pricepirate;
-
-
-CREATE OR REPLACE VIEW public.v_strategy_highlow_250
-AS SELECT vh.close AS "PRICE",
-    vh."timestamp" AS "DATE",
-    'OPEN'::text AS "ACTION"
-   FROM v_high_250 vh
-  WHERE abs(vh.close - vh.value) < 1::numeric
-UNION
- SELECT vl.close AS "PRICE",
-    vl."timestamp" AS "DATE",
-    'CLOSE'::text AS "ACTION"
-   FROM v_low_250 vl
-  WHERE abs(vl.close - vl.value) < 1::numeric
-  ORDER BY 2;
-
-ALTER VIEW public.v_strategy_highlow_250 OWNER TO pricepirate;
-
-CREATE OR REPLACE VIEW public.v_strategy_sma_150
-AS SELECT "PRICE",
-    "DATE",
-    "SYMBOL",
-    "ACTION"
-   FROM ( SELECT b.current_value AS "PRICE",
-            b.decrease_start_date AS "DATE",
-            b.symbol AS "SYMBOL",
-            'CLOSE'::text AS "ACTION"
-           FROM v_xbelow_150 b
-        UNION
-         SELECT a.current_value AS "PRICE",
-            a.increase_start_date AS "DATE",
-            a.symbol AS "SYMBOL",
-            'OPEN'::text AS "ACTION"
-           FROM v_xabove_150 a) unnamed_subquery
-  ORDER BY "DATE";
-
-ALTER VIEW public.v_strategy_sma_150 OWNER TO pricepirate;
-
-CREATE OR REPLACE VIEW public.v_strategy_high250_sma150
-AS SELECT vsh."ACTION",
-    vsh."DATE",
-    vsh."PRICE"
-   FROM v_strategy_highlow_250 vsh
-  WHERE vsh."ACTION" = 'OPEN'::text
-UNION
- SELECT vss."ACTION",
-    vss."DATE",
-    vss."PRICE"
-   FROM v_strategy_sma_150 vss
-  WHERE vss."ACTION" = 'CLOSE'::text
-  ORDER BY 2;
-
-ALTER
-
-CREATE OR REPLACE VIEW public.v_symbols_details
-AS SELECT cp.ticker, sd."name", sd.sector, sd.subsector
-   FROM company_profile cp
-   join symbols_details sd on sd.symbol_id = cp.symbol_id;
-
-ALTER VIEW public.v_symbols_details OWNER TO pricepirate;
 
 --
 -- Name: symbols_symbol_id_seq; Type: SEQUENCE; Schema: public; Owner: pricepirate
@@ -534,3 +320,225 @@ ALTER TABLE ONLY public.reversal_scan_results
 -- PostgreSQL database dump complete
 --
 
+commit;
+
+CREATE VIEW public.symbol_info_basic AS
+ SELECT s.symbol_id,
+    s.symbol,
+    d.sector,
+    d.subsector,
+    d.name,
+    p.logo,
+    p.weburl,
+    p.market_capitalization,
+    o."timestamp",
+    o.open,
+    o.high,
+    o.low,
+    o.close,
+    o.volume
+   FROM (((public.symbols s
+     JOIN public.symbols_details d ON ((s.symbol_id = d.symbol_id)))
+     JOIN public.ohlc_data o ON ((o.symbol_id = s.symbol_id)))
+     JOIN public.company_profile p ON ((p.symbol_id = s.symbol_id)));
+
+
+ALTER VIEW public.symbol_info_basic OWNER TO pricepirate;
+
+-- public.v_high_250 source
+
+CREATE OR REPLACE VIEW public.v_high_250
+AS SELECT id.name AS indicator_name,
+    od."timestamp",
+    s.symbol_id,
+    s.symbol as symbol,
+    sd.name AS symbol_name,
+    od.close,
+    i.value
+   FROM public.ohlc_data od
+     JOIN public.symbols s ON s.symbol_id = od.symbol_id
+     JOIN public.symbols_details sd ON s.symbol_id = sd.symbol_id
+     JOIN public.indicators i ON i.symbol_id = od.symbol_id AND i."timestamp" = od."timestamp" 
+     JOIN public.indicator_definitions id ON id.indicator_id = i.indicator_id and id.name = 'HIGH_250';
+
+ALTER VIEW public.v_high_250 OWNER TO pricepirate;
+
+CREATE OR REPLACE VIEW public.v_low_250
+AS SELECT id.name AS indicator_name,
+    od."timestamp",
+    s.symbol_id,
+    s.symbol as symbol,
+    sd.name AS symbol_name,
+    od.close,
+    i.value
+   FROM public.ohlc_data od
+     JOIN public.symbols s ON s.symbol_id = od.symbol_id
+     JOIN public.symbols_details sd ON s.symbol_id = sd.symbol_id
+     JOIN public.indicators i ON i.symbol_id = od.symbol_id AND i."timestamp" = od."timestamp"
+     JOIN public.indicator_definitions id ON id.indicator_id = i.indicator_id AND id.name = 'LOW_250';
+
+ALTER VIEW public.v_low_250 OWNER TO pricepirate;
+
+-- public.v_xabove_150 source
+
+CREATE OR REPLACE VIEW public.v_xabove_150
+AS WITH indicator_data AS (
+         SELECT s.symbol_id,
+            s.symbol,
+            sd.name AS company_name,
+            sd.sector,
+            sd.subsector,
+            i."timestamp",
+            i.value,
+            lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") AS previous_value
+           FROM public.symbols s
+             JOIN public.symbols_details sd ON s.symbol_id = sd.symbol_id
+             JOIN public.indicators i ON i.symbol_id = s.symbol_id
+             JOIN public.indicator_definitions id ON id.indicator_id = i.indicator_id
+          WHERE id.name = 'SMA_150'::text
+        ), increase_flags AS (
+         SELECT indicator_data.symbol_id,
+            indicator_data.symbol,
+            indicator_data.company_name,
+            indicator_data.sector,
+            indicator_data.subsector,
+            indicator_data."timestamp",
+            indicator_data.value,
+            indicator_data.previous_value,
+                CASE
+                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value > indicator_data.previous_value THEN 1
+                    ELSE 0
+                END AS is_increase,
+            lag(
+                CASE
+                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value > indicator_data.previous_value THEN 1
+                    ELSE 0
+                END) OVER (PARTITION BY indicator_data.symbol_id ORDER BY indicator_data."timestamp") AS previous_is_increase
+           FROM indicator_data
+        )
+ SELECT symbol,
+    "timestamp" AS increase_start_date,
+    value AS current_value,
+    previous_value
+   FROM increase_flags
+  WHERE is_increase = 1 AND (previous_is_increase = 0 OR previous_is_increase IS NULL)
+  ORDER BY "timestamp";
+
+ALTER VIEW public.v_xabove_150 OWNER TO pricepirate;
+
+-- public.v_xbelow_150 source
+
+CREATE OR REPLACE VIEW public.v_xbelow_150
+AS WITH indicator_data AS (
+         SELECT s.symbol_id,
+            s.symbol,
+            sd.name AS company_name,
+            sd.sector,
+            sd.subsector,
+            i."timestamp",
+            i.value,
+            lag(i.value) OVER (PARTITION BY s.symbol_id ORDER BY i."timestamp") AS previous_value
+           FROM public.symbols s
+             JOIN public.symbols_details sd ON s.symbol_id = sd.symbol_id
+             JOIN public.indicators i ON i.symbol_id = s.symbol_id
+             JOIN public.indicator_definitions id ON id.indicator_id = i.indicator_id
+          WHERE id.name = 'SMA_150'::text
+        ), decrease_flags AS (
+         SELECT indicator_data.symbol_id,
+            indicator_data.symbol,
+            indicator_data.company_name,
+            indicator_data.sector,
+            indicator_data.subsector,
+            indicator_data."timestamp",
+            indicator_data.value,
+            indicator_data.previous_value,
+                CASE
+                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value < indicator_data.previous_value THEN 1
+                    ELSE 0
+                END AS is_decrease,
+            lag(
+                CASE
+                    WHEN indicator_data.previous_value IS NOT NULL AND indicator_data.value < indicator_data.previous_value THEN 1
+                    ELSE 0
+                END) OVER (PARTITION BY indicator_data.symbol_id ORDER BY indicator_data."timestamp") AS previous_is_decrease
+           FROM indicator_data
+        )
+ SELECT symbol,
+    "timestamp" AS decrease_start_date,
+    value AS current_value,
+    previous_value
+   FROM decrease_flags
+  WHERE is_decrease = 1 AND (previous_is_decrease = 0 OR previous_is_decrease IS NULL)
+  ORDER BY "timestamp";
+
+ALTER VIEW public.v_xbelow_150 OWNER TO pricepirate;
+
+CREATE OR REPLACE VIEW public.v_strategy_highlow_250
+AS SELECT vh.symbol AS "SYMBOL",
+    vh.close AS "PRICE",
+    vh."timestamp" AS "DATE",
+    'OPEN'::text AS "ACTION"
+   FROM v_high_250 vh
+  WHERE abs(vh.close - vh.value) < 1::numeric
+UNION
+ SELECT vl.symbol AS "SYMBOL",
+    vl.close AS "PRICE",
+    vl."timestamp" AS "DATE",
+    'CLOSE'::text AS "ACTION"
+   FROM v_low_250 vl
+  WHERE abs(vl.close - vl.value) < 1::numeric
+  ORDER BY 2;
+
+ALTER VIEW public.v_strategy_highlow_250 OWNER TO pricepirate;
+
+CREATE OR REPLACE VIEW public.v_strategy_sma_150
+AS SELECT "PRICE",
+    "DATE",
+    "SYMBOL",
+    "ACTION"
+   FROM ( SELECT b.current_value AS "PRICE",
+            b.decrease_start_date AS "DATE",
+            b.symbol AS "SYMBOL",
+            'CLOSE'::text AS "ACTION"
+           FROM public.v_xbelow_150 b
+        UNION
+         SELECT a.current_value AS "PRICE",
+            a.increase_start_date AS "DATE",
+            a.symbol AS "SYMBOL",
+            'OPEN'::text AS "ACTION"
+           FROM public.v_xabove_150 a) unnamed_subquery
+  ORDER BY "DATE";
+
+ALTER VIEW public.v_strategy_sma_150 OWNER TO pricepirate;
+
+-- public.v_strategy_high250_sma150 source
+
+CREATE OR REPLACE VIEW public.v_strategy_high250_sma150
+AS select
+	vsh."SYMBOL",
+	vsh."ACTION",
+    vsh."DATE",
+    vsh."PRICE"
+   FROM v_strategy_highlow_250 vsh
+  WHERE vsh."ACTION" = 'OPEN'::text
+UNION
+ select	
+ 	vss."SYMBOL",
+ 	vss."ACTION",
+    vss."DATE",
+    vss."PRICE"
+   FROM v_strategy_sma_150 vss
+  WHERE vss."ACTION" = 'CLOSE'::text
+  ORDER BY 2;
+
+ALTER VIEW public.v_strategy_high250_sma150 OWNER TO pricepirate;
+
+
+CREATE OR REPLACE VIEW public.v_symbols_details
+AS SELECT cp.ticker, sd."name", sd.sector, sd.subsector
+   FROM public.company_profile cp
+   join public.symbols_details sd on sd.symbol_id = cp.symbol_id;
+
+ALTER VIEW public.v_symbols_details OWNER TO pricepirate;
+
+commit;

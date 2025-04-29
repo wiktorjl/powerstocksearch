@@ -1,3 +1,4 @@
+delete from company_profile;
 delete from ohlc_data;
 delete from splits;
 delete from indicators;

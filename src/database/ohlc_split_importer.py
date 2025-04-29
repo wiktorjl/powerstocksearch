@@ -279,7 +279,7 @@ def main():
             all_tickers_details: Dict[str, Dict[str, Optional[str]]] = local_data.load_tickers_and_data_from_sources(config.TICKER_SOURCES)
             logger.info(f"Loaded details for {len(all_tickers_details)} tickers from sources.")
 
-            ohlc_files = [f for f in ohlc_files if "AMZN" in f._str] # Ensure only files are processed
+            ohlc_files = [f for f in ohlc_files if f._str.endswith("AMZN.csv") or f._str.endswith("AAPL.csv")] # Ensure only files are processed
             for ohlc_filepath in ohlc_files:
                 filename = ohlc_filepath.name
                 # Expecting filename like 'AMZN.csv', so the stem is the symbol
